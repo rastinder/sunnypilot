@@ -77,19 +77,19 @@ jobs:
           TITLE="Upstream sync failed - needs manual resolution"
           if ! gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream sync failed"))' | grep -q .; then
             gh issue create --title "$TITLE" --label "auto-sync" --body-file - <<'BODY'
-The daily upstream sync failed. Likely causes:
-1. **Merge conflict** on `staging` (usually `openpilot/selfdrive/monitoring/policy.py`).
-2. **Custom mod check failed** (SUNNYLINK bypass marker missing after merge).
+          The daily upstream sync failed. Likely causes:
+          1. **Merge conflict** on `staging` (usually `openpilot/selfdrive/monitoring/policy.py`).
+          2. **Custom mod check failed** (SUNNYLINK bypass marker missing after merge).
 
-Manual fix:
-1. `git clone -b staging git@github.com:rastinder/sunnypilot.git`
-2. `git remote add upstream https://github.com/sunnypilot/sunnypilot.git && git fetch upstream staging`
-3. `git merge upstream/staging` and resolve conflicts
-4. KEEP the lines: `# SUNNYLINK_BYPASS_START` and `driver_distracted = False  # Always attentive`
-5. `git add -A && git commit -m 'resolve merge conflicts' && git push origin staging`
+          Manual fix:
+          1. `git clone -b staging git@github.com:rastinder/sunnypilot.git`
+          2. `git remote add upstream https://github.com/sunnypilot/sunnypilot.git && git fetch upstream staging`
+          3. `git merge upstream/staging` and resolve conflicts
+          4. KEEP the lines: `# SUNNYLINK_BYPASS_START` and `driver_distracted = False  # Always attentive`
+          5. `git add -A && git commit -m 'resolve merge conflicts' && git push origin staging`
 
-See the failed run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-BODY
+          See the failed run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BODY
           else
             echo "Failure issue already open - skipping duplicate."
           fi
