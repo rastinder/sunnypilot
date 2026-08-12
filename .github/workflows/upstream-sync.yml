@@ -2,7 +2,7 @@ name: Daily upstream sync (sunnypilot -> fork staging)
 
 # Merges upstream SunnyPilot `staging` into this fork's `staging` every day,
 # keeping the custom distraction-disable commit (c704b0d) intact on top.
-# The comma device pulls from this fork when parked — no PC involvement.
+# The comma device pulls from this fork when parked - no PC involvement.
 #
 # NOTE: `on: schedule` only fires when this file exists on the DEFAULT
 # branch (master). Keep a copy on both master and staging.
@@ -55,6 +55,7 @@ jobs:
           echo "result=merged" >> "$GITHUB_OUTPUT"
 
       - name: Verify custom mods survived the merge
+        id: verify
         if: steps.merge.outputs.result == 'merged'
         run: |
           set -euo pipefail
@@ -70,21 +71,25 @@ jobs:
           git push origin staging
           echo "Pushed. Device will auto-update when parked (installs at next boot)."
 
-      - name: Open conflict issue (needs manual resolution)
-        if: failure() && steps.merge.outcome == 'failure'
+      - name: Open failure issue (needs manual resolution)
+        if: failure()
         run: |
-          TITLE="Upstream merge conflict in staging - needs manual resolution"
-          if ! gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream merge conflict in staging"))' | grep -q .; then
-            gh issue create --title "$TITLE" --label "auto-sync" --body "The daily upstream sync hit a merge conflict on **staging** (usually \`openpilot/selfdrive/monitoring/policy.py\`).
+          TITLE="Upstream sync failed - needs manual resolution"
+          if ! gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream sync failed"))' | grep -q .; then
+            gh issue create --title "$TITLE" --label "auto-sync" --body-file - <<'BODY'
+The daily upstream sync failed. Likely causes:
+1. **Merge conflict** on `staging` (usually `openpilot/selfdrive/monitoring/policy.py`).
+2. **Custom mod check failed** (SUNNYLINK bypass marker missing after merge).
 
 Manual fix:
-1. \`git clone -b staging git@github.com:rastinder/sunnypilot.git\`
-2. \`git remote add upstream https://github.com/sunnypilot/sunnypilot.git && git fetch upstream staging\`
-3. \`git merge upstream/staging\` and resolve conflicts
-4. KEEP the lines: \`# SUNNYLINK_BYPASS_START\` and \`driver_distracted = False  # Always attentive\`
-5. \`git add -A && git commit -m 'resolve merge conflicts' && git push origin staging\`
+1. `git clone -b staging git@github.com:rastinder/sunnypilot.git`
+2. `git remote add upstream https://github.com/sunnypilot/sunnypilot.git && git fetch upstream staging`
+3. `git merge upstream/staging` and resolve conflicts
+4. KEEP the lines: `# SUNNYLINK_BYPASS_START` and `driver_distracted = False  # Always attentive`
+5. `git add -A && git commit -m 'resolve merge conflicts' && git push origin staging`
 
-See the failed run: \${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"
+See the failed run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+BODY
           else
-            echo "Conflict issue already open - skipping duplicate."
+            echo "Failure issue already open - skipping duplicate."
           fi
