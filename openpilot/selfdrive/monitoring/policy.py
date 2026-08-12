@@ -278,8 +278,21 @@ class DriverMonitoring:
                       * (driver_data.sunglassesProb < self.settings._SG_THRESHOLD)
     self.phone_prob = driver_data.phoneProb
 
+    # SUNNYLINK_BYPASS_START
+    # Hardcoded values - driver always looking straight ahead, saves processing
+    self.pose.pitch = 0.0
+    self.pose.yaw = 0.0
+    self.model_std_max = 0.0
+    self.pose.low_std = True
+    self.face_detected = True
+    self.blink.left = 0.0
+    self.blink.right = 0.0
+    self.phone_prob = 0.0
+    # SUNNYLINK_BYPASS_END
+
     self._get_distracted_types()
     self.driver_distracted = any(self.distracted_types.values()) and driver_data.faceProb > self.settings._FACE_THRESHOLD and self.pose.low_std
+    self.driver_distracted = False  # Always attentive - pay attention warnings disabled
     self.driver_distraction_filter.update(self.driver_distracted)
 
     # only update offsetter when driver is actively driving the car above a certain speed

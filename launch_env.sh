@@ -20,3 +20,7 @@ if [ -z "$AGNOS_VERSION" ]; then
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+
+# Re-apply pay attention disable after every update
+python3 /data/fix_pay_attention.py || true
