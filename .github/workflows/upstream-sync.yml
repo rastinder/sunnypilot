@@ -1,0 +1,90 @@
+name: Daily upstream sync (sunnypilot -> fork staging)
+
+# Merges upstream SunnyPilot `staging` into this fork's `staging` every day,
+# keeping the custom distraction-disable commit (c704b0d) intact on top.
+# The comma device pulls from this fork when parked — no PC involvement.
+#
+# NOTE: `on: schedule` only fires when this file exists on the DEFAULT
+# branch (master). Keep a copy on both master and staging.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'        # daily 03:00 UTC
+  workflow_dispatch: {}        # manual "Run workflow" button on GitHub
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout fork staging (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "rastinder"
+          git config user.email "rastinder@gmail.com"
+          git remote add upstream https://github.com/sunnypilot/sunnypilot.git
+
+      - name: Fetch upstream staging
+        run: git fetch upstream staging
+
+      - name: Merge upstream into fork staging
+        id: merge
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA=$(git rev-parse upstream/staging)
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
+            echo "Already up to date - fork contains upstream/staging ($(echo "$UPSTREAM_SHA" | cut -c1-10))."
+            echo "result=up-to-date" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Merging upstream/staging ($(echo "$UPSTREAM_SHA" | cut -c1-10)) into fork..."
+          git merge "$UPSTREAM_SHA" -m "Merge upstream sunnypilot staging $(date -u +%F)"
+          echo "result=merged" >> "$GITHUB_OUTPUT"
+
+      - name: Verify custom mods survived the merge
+        if: steps.merge.outputs.result == 'merged'
+        run: |
+          set -euo pipefail
+          grep -q 'SUNNYLINK_BYPASS_START' openpilot/selfdrive/monitoring/policy.py \
+            || { echo "::error::SUNNYLINK bypass marker missing from policy.py after merge!"; exit 1; }
+          grep -q 'fix_pay_attention' launch_env.sh \
+            || { echo "::error::fix_pay_attention hook missing from launch_env.sh after merge!"; exit 1; }
+          echo "Custom distraction-disable mods verified intact."
+
+      - name: Push to fork staging
+        if: steps.merge.outputs.result == 'merged'
+        run: |
+          git push origin staging
+          echo "Pushed. Device will auto-update when parked (installs at next boot)."
+
+      - name: Open conflict issue (needs manual resolution)
+        if: failure() && steps.merge.outcome == 'failure'
+        run: |
+          TITLE="Upstream merge conflict in staging - needs manual resolution"
+          if ! gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream merge conflict in staging"))' | grep -q .; then
+            gh issue create --title "$TITLE" --label "auto-sync" --body "The daily upstream sync hit a merge conflict on **staging** (usually \`openpilot/selfdrive/monitoring/policy.py\`).
+
+Manual fix:
+1. \`git clone -b staging git@github.com:rastinder/sunnypilot.git\`
+2. \`git remote add upstream https://github.com/sunnypilot/sunnypilot.git && git fetch upstream staging\`
+3. \`git merge upstream/staging\` and resolve conflicts
+4. KEEP the lines: \`# SUNNYLINK_BYPASS_START\` and \`driver_distracted = False  # Always attentive\`
+5. \`git add -A && git commit -m 'resolve merge conflicts' && git push origin staging\`
+
+See the failed run: \${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"
+          else
+            echo "Conflict issue already open - skipping duplicate."
+          fi
