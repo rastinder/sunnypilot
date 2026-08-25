@@ -45,6 +45,65 @@ jobs:
         run: |
           set -euo pipefail
           UPSTREAM_SHA=$(git rev-parse upstream/staging)
+          if ! git merge-base HEAD "$UPSTREAM_SHA" >/dev/null 2>&1; then
+            echo "::warning::Upstream staging has unrelated history; creating a merge commit from the rewritten upstream tree."
+
+            # Keep this workflow file while replacing the tree with upstream.
+            WORKFLOW_BACKUP="$RUNNER_TEMP/upstream-sync.yml"
+            cp .github/workflows/upstream-sync.yml "$WORKFLOW_BACKUP"
+
+            # Use ours only to create a merge commit with both histories as parents.
+            # The tree is then replaced with upstream plus the custom safeguards below,
+            # so future normal updates remain fast-forwardable.
+            git merge --allow-unrelated-histories -s ours --no-commit "$UPSTREAM_SHA" -m "Sync rewritten upstream sunnypilot staging $(date -u +%F)"
+            git read-tree --reset -u "$UPSTREAM_SHA"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          policy_path = Path("openpilot/selfdrive/monitoring/policy.py")
+          policy = policy_path.read_text()
+          bypass = """    # SUNNYLINK_BYPASS_START
+              # Hardcoded values - driver always looking straight ahead, saves processing
+              self.pose.pitch = 0.0
+              self.pose.yaw = 0.0
+              self.model_std_max = 0.0
+              self.pose.low_std = True
+              self.face_detected = True
+              self.blink.left = 0.0
+              self.blink.right = 0.0
+              self.phone_prob = 0.0
+              # SUNNYLINK_BYPASS_END
+
+          """
+          if "SUNNYLINK_BYPASS_START" not in policy:
+            anchor = "    self._get_distracted_types()\n"
+            if anchor not in policy:
+              raise SystemExit("cannot find policy.py distraction anchor")
+            policy = policy.replace(anchor, bypass + anchor, 1)
+          if "driver_distracted = False  # Always attentive" not in policy:
+            match = re.search(r"^    self\.driver_distracted = any\(.*\n", policy, re.MULTILINE)
+            if match is None:
+              raise SystemExit("cannot find policy.py distraction assignment")
+            policy = policy[:match.end()] + "    self.driver_distracted = False  # Always attentive - pay attention warnings disabled\n" + policy[match.end():]
+          policy_path.write_text(policy)
+
+          launch_path = Path("launch_env.sh")
+          launch = launch_path.read_text()
+          if "fix_pay_attention" not in launch:
+            launch += "\n\n# Re-apply pay attention disable after every update\npython3 /data/fix_pay_attention.py || true\n"
+            launch_path.write_text(launch)
+          PY
+
+            mkdir -p .github/workflows
+            cp "$WORKFLOW_BACKUP" .github/workflows/upstream-sync.yml
+            git add -A
+            git commit --no-edit
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
             echo "Already up to date - fork contains upstream/staging ($(echo "$UPSTREAM_SHA" | cut -c1-10))."
             echo "result=up-to-date" >> "$GITHUB_OUTPUT"
@@ -73,10 +132,18 @@ jobs:
 
       - name: Open failure issue (needs manual resolution)
         if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -uo pipefail
           TITLE="Upstream sync failed - needs manual resolution"
-          if ! gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream sync failed"))' | grep -q .; then
-            gh issue create --title "$TITLE" --label "auto-sync" --body-file - <<'BODY'
+          if ! OPEN_FAILURES=$(gh issue list --state open --json title -q '.[] | select(.title | startswith("Upstream sync failed"))'); then
+            echo "::warning::Could not query existing failure issues; leaving the original sync failure visible."
+            exit 0
+          fi
+          if ! printf '%s\n' "$OPEN_FAILURES" | grep -q .; then
+            gh issue create --title "$TITLE" --body-file - <<'BODY'
           The daily upstream sync failed. Likely causes:
           1. **Merge conflict** on `staging` (usually `openpilot/selfdrive/monitoring/policy.py`).
           2. **Custom mod check failed** (SUNNYLINK bypass marker missing after merge).
