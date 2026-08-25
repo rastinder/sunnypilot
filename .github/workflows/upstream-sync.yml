@@ -25,11 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout fork staging (full history)
+      - name: Checkout fork staging (shallow)
         uses: actions/checkout@v4
         with:
           ref: staging
-          fetch-depth: 0
+          fetch-depth: 1
+          # Staging is a short orphan chain; full-history checkout hangs on the
+          # fork's tag/network object graph (30-min timeout kill on 2026-08-25).
 
       - name: Configure git
         run: |
@@ -38,7 +40,7 @@ jobs:
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
 
       - name: Fetch upstream staging
-        run: git fetch upstream staging
+        run: git fetch --depth=500 upstream staging
 
       - name: Merge upstream into fork staging
         id: merge
