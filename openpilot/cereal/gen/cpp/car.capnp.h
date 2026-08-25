@@ -245,7 +245,7 @@ CAPNP_DECLARE_SCHEMA(9622723fcbd14c2e);
 CAPNP_DECLARE_SCHEMA(80366e0e804ecc1d);
 CAPNP_DECLARE_SCHEMA(af977a6cea924390);
 CAPNP_DECLARE_SCHEMA(c342cefc303e9b8e);
-CAPNP_DECLARE_SCHEMA(c41c0d299f554d2e);
+CAPNP_DECLARE_SCHEMA(8d36e2a4f860cd3e);
 CAPNP_DECLARE_SCHEMA(caa441291b152efd);
 CAPNP_DECLARE_SCHEMA(c1110421b4c850e6);
 CAPNP_DECLARE_SCHEMA(a1adf400915718e5);
@@ -286,6 +286,10 @@ enum class SafetyModel_95551e5b1edaf451: uint16_t {
   FCA_GIORGIO,
   RIVIAN,
   VOLKSWAGEN_MEB,
+  BYD,
+  VOLVO,
+  BMW,
+  MG,
 };
 CAPNP_DECLARE_ENUM(SafetyModel, 95551e5b1edaf451);
 CAPNP_DECLARE_SCHEMA(d661512be2def77f);
@@ -821,7 +825,7 @@ struct CarParams::LongitudinalPIDTuning::Deprecated {
   class Pipeline;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(c41c0d299f554d2e, 1, 6)
+    CAPNP_DECLARE_STRUCT_HEADER(8d36e2a4f860cd3e, 1, 6)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -1177,6 +1181,8 @@ public:
 
   inline bool getBlockPcmEnable() const;
 
+  inline bool getCarNotReady() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -1372,6 +1378,9 @@ public:
 
   inline bool getBlockPcmEnable();
   inline void setBlockPcmEnable(bool value);
+
+  inline bool getCarNotReady();
+  inline void setCarNotReady(bool value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -4067,19 +4076,13 @@ public:
   }
 #endif  // !CAPNP_LITE
 
-  inline bool hasKpBP() const;
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKpBP() const;
-
-  inline bool hasKpV() const;
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKpV() const;
+  inline typename Deprecated::Reader getDeprecated() const;
 
   inline bool hasKiBP() const;
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKiBP() const;
 
   inline bool hasKiV() const;
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKiV() const;
-
-  inline typename Deprecated::Reader getDeprecated() const;
 
 private:
   ::capnp::_::StructReader _reader;
@@ -4109,21 +4112,8 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
-  inline bool hasKpBP();
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getKpBP();
-  inline void setKpBP( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value);
-  inline void setKpBP(::kj::ArrayPtr<const float> value);
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initKpBP(unsigned int size);
-  inline void adoptKpBP(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
-  inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownKpBP();
-
-  inline bool hasKpV();
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getKpV();
-  inline void setKpV( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value);
-  inline void setKpV(::kj::ArrayPtr<const float> value);
-  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initKpV(unsigned int size);
-  inline void adoptKpV(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
-  inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownKpV();
+  inline typename Deprecated::Builder getDeprecated();
+  inline typename Deprecated::Builder initDeprecated();
 
   inline bool hasKiBP();
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getKiBP();
@@ -4140,9 +4130,6 @@ public:
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initKiV(unsigned int size);
   inline void adoptKiV(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
   inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownKiV();
-
-  inline typename Deprecated::Builder getDeprecated();
-  inline typename Deprecated::Builder initDeprecated();
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -4188,6 +4175,12 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline bool hasKpBP() const;
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKpBP() const;
+
+  inline bool hasKpV() const;
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getKpV() const;
+
   inline bool hasDeadzoneBP() const;
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getDeadzoneBP() const;
 
@@ -4223,6 +4216,22 @@ public:
 #if !CAPNP_LITE
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
+
+  inline bool hasKpBP();
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getKpBP();
+  inline void setKpBP( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value);
+  inline void setKpBP(::kj::ArrayPtr<const float> value);
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initKpBP(unsigned int size);
+  inline void adoptKpBP(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
+  inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownKpBP();
+
+  inline bool hasKpV();
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getKpV();
+  inline void setKpV( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value);
+  inline void setKpV(::kj::ArrayPtr<const float> value);
+  inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initKpV(unsigned int size);
+  inline void adoptKpV(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
+  inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownKpV();
 
   inline bool hasDeadzoneBP();
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder getDeadzoneBP();
@@ -6143,6 +6152,20 @@ inline bool CarState::Builder::getBlockPcmEnable() {
 inline void CarState::Builder::setBlockPcmEnable(bool value) {
   _builder.setDataField<bool>(
       ::capnp::bounded<371>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool CarState::Reader::getCarNotReady() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<372>() * ::capnp::ELEMENTS);
+}
+
+inline bool CarState::Builder::getCarNotReady() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<372>() * ::capnp::ELEMENTS);
+}
+inline void CarState::Builder::setCarNotReady(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<372>() * ::capnp::ELEMENTS, value);
 }
 
 inline float CarState::WheelSpeeds::Reader::getFl() const {
@@ -9011,82 +9034,25 @@ inline void CarParams::LateralTorqueTuning::Deprecated::Builder::setKd(float val
       ::capnp::bounded<8>() * ::capnp::ELEMENTS, value);
 }
 
-inline bool CarParams::LongitudinalPIDTuning::Reader::hasKpBP() const {
-  return !_reader.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+inline typename CarParams::LongitudinalPIDTuning::Deprecated::Reader CarParams::LongitudinalPIDTuning::Reader::getDeprecated() const {
+  return typename CarParams::LongitudinalPIDTuning::Deprecated::Reader(_reader);
 }
-inline bool CarParams::LongitudinalPIDTuning::Builder::hasKpBP() {
-  return !_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+inline typename CarParams::LongitudinalPIDTuning::Deprecated::Builder CarParams::LongitudinalPIDTuning::Builder::getDeprecated() {
+  return typename CarParams::LongitudinalPIDTuning::Deprecated::Builder(_builder);
 }
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader CarParams::LongitudinalPIDTuning::Reader::getKpBP() const {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_reader.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS));
+#if !CAPNP_LITE
+inline typename CarParams::LongitudinalPIDTuning::Deprecated::Pipeline CarParams::LongitudinalPIDTuning::Pipeline::getDeprecated() {
+  return typename CarParams::LongitudinalPIDTuning::Deprecated::Pipeline(_typeless.noop());
 }
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Builder::getKpBP() {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS));
+#endif  // !CAPNP_LITE
+inline typename CarParams::LongitudinalPIDTuning::Deprecated::Builder CarParams::LongitudinalPIDTuning::Builder::initDeprecated() {
+  _builder.setDataField< ::uint32_t>(::capnp::bounded<0>() * ::capnp::ELEMENTS, 0);
+  _builder.getPointerField(::capnp::bounded<0>() * ::capnp::POINTERS).clear();
+  _builder.getPointerField(::capnp::bounded<1>() * ::capnp::POINTERS).clear();
+  _builder.getPointerField(::capnp::bounded<4>() * ::capnp::POINTERS).clear();
+  _builder.getPointerField(::capnp::bounded<5>() * ::capnp::POINTERS).clear();
+  return typename CarParams::LongitudinalPIDTuning::Deprecated::Builder(_builder);
 }
-inline void CarParams::LongitudinalPIDTuning::Builder::setKpBP( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
-}
-inline void CarParams::LongitudinalPIDTuning::Builder::setKpBP(::kj::ArrayPtr<const float> value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
-}
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Builder::initKpBP(unsigned int size) {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::init(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
-}
-inline void CarParams::LongitudinalPIDTuning::Builder::adoptKpBP(
-    ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::adopt(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
-}
-inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarParams::LongitudinalPIDTuning::Builder::disownKpBP() {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
-      ::capnp::bounded<0>() * ::capnp::POINTERS));
-}
-
-inline bool CarParams::LongitudinalPIDTuning::Reader::hasKpV() const {
-  return !_reader.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
-}
-inline bool CarParams::LongitudinalPIDTuning::Builder::hasKpV() {
-  return !_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
-}
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader CarParams::LongitudinalPIDTuning::Reader::getKpV() const {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_reader.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS));
-}
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Builder::getKpV() {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS));
-}
-inline void CarParams::LongitudinalPIDTuning::Builder::setKpV( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
-}
-inline void CarParams::LongitudinalPIDTuning::Builder::setKpV(::kj::ArrayPtr<const float> value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
-}
-inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Builder::initKpV(unsigned int size) {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::init(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS), size);
-}
-inline void CarParams::LongitudinalPIDTuning::Builder::adoptKpV(
-    ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value) {
-  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::adopt(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS), kj::mv(value));
-}
-inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarParams::LongitudinalPIDTuning::Builder::disownKpV() {
-  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
-      ::capnp::bounded<1>() * ::capnp::POINTERS));
-}
-
 inline bool CarParams::LongitudinalPIDTuning::Reader::hasKiBP() const {
   return !_reader.getPointerField(
       ::capnp::bounded<2>() * ::capnp::POINTERS).isNull();
@@ -9163,23 +9129,82 @@ inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarPara
       ::capnp::bounded<3>() * ::capnp::POINTERS));
 }
 
-inline typename CarParams::LongitudinalPIDTuning::Deprecated::Reader CarParams::LongitudinalPIDTuning::Reader::getDeprecated() const {
-  return typename CarParams::LongitudinalPIDTuning::Deprecated::Reader(_reader);
+inline bool CarParams::LongitudinalPIDTuning::Deprecated::Reader::hasKpBP() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline typename CarParams::LongitudinalPIDTuning::Deprecated::Builder CarParams::LongitudinalPIDTuning::Builder::getDeprecated() {
-  return typename CarParams::LongitudinalPIDTuning::Deprecated::Builder(_builder);
+inline bool CarParams::LongitudinalPIDTuning::Deprecated::Builder::hasKpBP() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-#if !CAPNP_LITE
-inline typename CarParams::LongitudinalPIDTuning::Deprecated::Pipeline CarParams::LongitudinalPIDTuning::Pipeline::getDeprecated() {
-  return typename CarParams::LongitudinalPIDTuning::Deprecated::Pipeline(_typeless.noop());
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader CarParams::LongitudinalPIDTuning::Deprecated::Reader::getKpBP() const {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-#endif  // !CAPNP_LITE
-inline typename CarParams::LongitudinalPIDTuning::Deprecated::Builder CarParams::LongitudinalPIDTuning::Builder::initDeprecated() {
-  _builder.setDataField< ::uint32_t>(::capnp::bounded<0>() * ::capnp::ELEMENTS, 0);
-  _builder.getPointerField(::capnp::bounded<4>() * ::capnp::POINTERS).clear();
-  _builder.getPointerField(::capnp::bounded<5>() * ::capnp::POINTERS).clear();
-  return typename CarParams::LongitudinalPIDTuning::Deprecated::Builder(_builder);
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Deprecated::Builder::getKpBP() {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::setKpBP( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::setKpBP(::kj::ArrayPtr<const float> value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Deprecated::Builder::initKpBP(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
+}
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::adoptKpBP(
+    ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarParams::LongitudinalPIDTuning::Deprecated::Builder::disownKpBP() {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline bool CarParams::LongitudinalPIDTuning::Deprecated::Reader::hasKpV() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline bool CarParams::LongitudinalPIDTuning::Deprecated::Builder::hasKpV() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader CarParams::LongitudinalPIDTuning::Deprecated::Reader::getKpV() const {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_reader.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Deprecated::Builder::getKpV() {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::get(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::setKpV( ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
+}
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::setKpV(::kj::ArrayPtr<const float> value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::set(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder CarParams::LongitudinalPIDTuning::Deprecated::Builder::initKpV(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::init(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), size);
+}
+inline void CarParams::LongitudinalPIDTuning::Deprecated::Builder::adoptKpV(
+    ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::adopt(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarParams::LongitudinalPIDTuning::Deprecated::Builder::disownKpV() {
+  return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
+      ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+
 inline bool CarParams::LongitudinalPIDTuning::Deprecated::Reader::hasDeadzoneBP() const {
   return !_reader.getPointerField(
       ::capnp::bounded<4>() * ::capnp::POINTERS).isNull();

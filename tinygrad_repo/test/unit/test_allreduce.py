@@ -1,5 +1,5 @@
 import unittest
-from tinygrad import Tensor, dtypes
+from tinygrad import Tensor, UOp, dtypes
 from tinygrad.helpers import Context
 from tinygrad.uop.ops import Ops
 
@@ -16,6 +16,39 @@ class TestRingAllReduce(unittest.TestCase):
       self.assertEqual(len(pairs), N*(N-1)*2)
       # copy topology forms a ring
       self.assertEqual(len(set(pairs)), N)
+
+  def test_schedule_all2all(self):
+    with Context(ALL2ALL=2):
+      N = 4
+      ds = tuple(f"CPU:{i}" for i in range(N))
+      t = Tensor.empty(N, N*100).shard(ds, axis=0).realize()
+      linear = t.sum(0).mul(2.0).contiguous().linear_with_vars()[0]
+      copies = [si for si in linear.src if si.src[0].op is Ops.COPY]
+      sinks = [si for si in linear.src if si.src[0].op is Ops.SINK]
+      self.assertEqual(len(copies), 24)
+      self.assertEqual(len(sinks), 26)
+
+  @Context(RING=0, ALL2ALL=0)
+  def test_schedule_naive(self):
+    N = 4
+    ds = tuple(f"NULL:{i}" for i in range(N))
+    t = Tensor.empty(N, 4096).shard(ds, axis=0).realize()
+    linear = t.sum(0).linear_with_vars()[0]
+
+    copies = [si for si in linear.src if si.src[0].op is Ops.COPY]
+    sinks = [si for si in linear.src if si.src[0].op is Ops.SINK]
+    pairs = [(c.src[1].buffer.device, c.src[2].buffer.device) for c in copies]
+
+    self.assertEqual(len(pairs), N*(N-1))
+    self.assertEqual(len(sinks), 2)
+    self.assertTrue(all(dst != src for dst, src in pairs))
+
+  def test_symbolic_shape(self):
+    rows = UOp.variable("rows", 1, 4).bind(3)
+    t = Tensor.ones(4, 4).shard(("CPU:0", "CPU:1"), axis=1).realize()
+    out = t[:rows].sum(1).realize()
+    self.assertEqual(out.shape, (rows,))
+    self.assertTrue((out == 4).all().item())
 
   def test_correct_ring(self):
     with Context(RING=2):

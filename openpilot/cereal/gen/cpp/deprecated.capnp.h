@@ -219,6 +219,8 @@ CAPNP_DECLARE_SCHEMA(939463348632375e);
 CAPNP_DECLARE_SCHEMA(9024e2d790c82ade);
 CAPNP_DECLARE_SCHEMA(84caeca5a6b4acfe);
 CAPNP_DECLARE_SCHEMA(8cfeb072f5301000);
+CAPNP_DECLARE_SCHEMA(ed47e3c075be372a);
+CAPNP_DECLARE_SCHEMA(b9e2c1d63cf178a1);
 
 }  // namespace schemas
 }  // namespace capnp
@@ -1075,6 +1077,37 @@ struct GpsTrajectory {
 
   struct _capnpPrivate {
     CAPNP_DECLARE_STRUCT_HEADER(8cfeb072f5301000, 0, 2)
+    #if !CAPNP_LITE
+    static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
+    #endif  // !CAPNP_LITE
+  };
+};
+
+struct AudioFeedbackDEPRECATED {
+  AudioFeedbackDEPRECATED() = delete;
+
+  class Reader;
+  class Builder;
+  class Pipeline;
+  struct AudioData;
+
+  struct _capnpPrivate {
+    CAPNP_DECLARE_STRUCT_HEADER(ed47e3c075be372a, 1, 1)
+    #if !CAPNP_LITE
+    static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
+    #endif  // !CAPNP_LITE
+  };
+};
+
+struct AudioFeedbackDEPRECATED::AudioData {
+  AudioData() = delete;
+
+  class Reader;
+  class Builder;
+  class Pipeline;
+
+  struct _capnpPrivate {
+    CAPNP_DECLARE_STRUCT_HEADER(b9e2c1d63cf178a1, 1, 1)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -7824,6 +7857,179 @@ private:
 class GpsTrajectory::Pipeline {
 public:
   typedef GpsTrajectory Pipelines;
+
+  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
+  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
+      : _typeless(kj::mv(typeless)) {}
+
+private:
+  ::capnp::AnyPointer::Pipeline _typeless;
+  friend class ::capnp::PipelineHook;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+};
+#endif  // !CAPNP_LITE
+
+class AudioFeedbackDEPRECATED::Reader {
+public:
+  typedef AudioFeedbackDEPRECATED Reads;
+
+  Reader() = default;
+  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
+
+  inline ::capnp::MessageSize totalSize() const {
+    return _reader.totalSize().asPublic();
+  }
+
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const {
+    return ::capnp::_::structString(_reader, *_capnpPrivate::brand());
+  }
+#endif  // !CAPNP_LITE
+
+  inline bool hasAudio() const;
+  inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Reader getAudio() const;
+
+  inline  ::uint16_t getBlockNum() const;
+
+private:
+  ::capnp::_::StructReader _reader;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::List;
+  friend class ::capnp::MessageBuilder;
+  friend class ::capnp::Orphanage;
+};
+
+class AudioFeedbackDEPRECATED::Builder {
+public:
+  typedef AudioFeedbackDEPRECATED Builds;
+
+  Builder() = delete;  // Deleted to discourage incorrect usage.
+                       // You can explicitly initialize to nullptr instead.
+  inline Builder(decltype(nullptr)) {}
+  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}
+  inline operator Reader() const { return Reader(_builder.asReader()); }
+  inline Reader asReader() const { return *this; }
+
+  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const { return asReader().toString(); }
+#endif  // !CAPNP_LITE
+
+  inline bool hasAudio();
+  inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Builder getAudio();
+  inline void setAudio( ::cereal::AudioFeedbackDEPRECATED::AudioData::Reader value);
+  inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Builder initAudio();
+  inline void adoptAudio(::capnp::Orphan< ::cereal::AudioFeedbackDEPRECATED::AudioData>&& value);
+  inline ::capnp::Orphan< ::cereal::AudioFeedbackDEPRECATED::AudioData> disownAudio();
+
+  inline  ::uint16_t getBlockNum();
+  inline void setBlockNum( ::uint16_t value);
+
+private:
+  ::capnp::_::StructBuilder _builder;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  friend class ::capnp::Orphanage;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+};
+
+#if !CAPNP_LITE
+class AudioFeedbackDEPRECATED::Pipeline {
+public:
+  typedef AudioFeedbackDEPRECATED Pipelines;
+
+  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
+  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
+      : _typeless(kj::mv(typeless)) {}
+
+  inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Pipeline getAudio();
+private:
+  ::capnp::AnyPointer::Pipeline _typeless;
+  friend class ::capnp::PipelineHook;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+};
+#endif  // !CAPNP_LITE
+
+class AudioFeedbackDEPRECATED::AudioData::Reader {
+public:
+  typedef AudioData Reads;
+
+  Reader() = default;
+  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
+
+  inline ::capnp::MessageSize totalSize() const {
+    return _reader.totalSize().asPublic();
+  }
+
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const {
+    return ::capnp::_::structString(_reader, *_capnpPrivate::brand());
+  }
+#endif  // !CAPNP_LITE
+
+  inline bool hasData() const;
+  inline  ::capnp::Data::Reader getData() const;
+
+  inline  ::uint32_t getSampleRate() const;
+
+private:
+  ::capnp::_::StructReader _reader;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::List;
+  friend class ::capnp::MessageBuilder;
+  friend class ::capnp::Orphanage;
+};
+
+class AudioFeedbackDEPRECATED::AudioData::Builder {
+public:
+  typedef AudioData Builds;
+
+  Builder() = delete;  // Deleted to discourage incorrect usage.
+                       // You can explicitly initialize to nullptr instead.
+  inline Builder(decltype(nullptr)) {}
+  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}
+  inline operator Reader() const { return Reader(_builder.asReader()); }
+  inline Reader asReader() const { return *this; }
+
+  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const { return asReader().toString(); }
+#endif  // !CAPNP_LITE
+
+  inline bool hasData();
+  inline  ::capnp::Data::Builder getData();
+  inline void setData( ::capnp::Data::Reader value);
+  inline  ::capnp::Data::Builder initData(unsigned int size);
+  inline void adoptData(::capnp::Orphan< ::capnp::Data>&& value);
+  inline ::capnp::Orphan< ::capnp::Data> disownData();
+
+  inline  ::uint32_t getSampleRate();
+  inline void setSampleRate( ::uint32_t value);
+
+private:
+  ::capnp::_::StructBuilder _builder;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  friend class ::capnp::Orphanage;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+};
+
+#if !CAPNP_LITE
+class AudioFeedbackDEPRECATED::AudioData::Pipeline {
+public:
+  typedef AudioData Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -17149,6 +17355,107 @@ inline void GpsTrajectory::Builder::adoptY(
 inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> GpsTrajectory::Builder::disownY() {
   return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
       ::capnp::bounded<1>() * ::capnp::POINTERS));
+}
+
+inline bool AudioFeedbackDEPRECATED::Reader::hasAudio() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool AudioFeedbackDEPRECATED::Builder::hasAudio() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Reader AudioFeedbackDEPRECATED::Reader::getAudio() const {
+  return ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Builder AudioFeedbackDEPRECATED::Builder::getAudio() {
+  return ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+#if !CAPNP_LITE
+inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Pipeline AudioFeedbackDEPRECATED::Pipeline::getAudio() {
+  return  ::cereal::AudioFeedbackDEPRECATED::AudioData::Pipeline(_typeless.getPointerField(0));
+}
+#endif  // !CAPNP_LITE
+inline void AudioFeedbackDEPRECATED::Builder::setAudio( ::cereal::AudioFeedbackDEPRECATED::AudioData::Reader value) {
+  ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::cereal::AudioFeedbackDEPRECATED::AudioData::Builder AudioFeedbackDEPRECATED::Builder::initAudio() {
+  return ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void AudioFeedbackDEPRECATED::Builder::adoptAudio(
+    ::capnp::Orphan< ::cereal::AudioFeedbackDEPRECATED::AudioData>&& value) {
+  ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::cereal::AudioFeedbackDEPRECATED::AudioData> AudioFeedbackDEPRECATED::Builder::disownAudio() {
+  return ::capnp::_::PointerHelpers< ::cereal::AudioFeedbackDEPRECATED::AudioData>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline  ::uint16_t AudioFeedbackDEPRECATED::Reader::getBlockNum() const {
+  return _reader.getDataField< ::uint16_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint16_t AudioFeedbackDEPRECATED::Builder::getBlockNum() {
+  return _builder.getDataField< ::uint16_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void AudioFeedbackDEPRECATED::Builder::setBlockNum( ::uint16_t value) {
+  _builder.setDataField< ::uint16_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool AudioFeedbackDEPRECATED::AudioData::Reader::hasData() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool AudioFeedbackDEPRECATED::AudioData::Builder::hasData() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::capnp::Data::Reader AudioFeedbackDEPRECATED::AudioData::Reader::getData() const {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::capnp::Data::Builder AudioFeedbackDEPRECATED::AudioData::Builder::getData() {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void AudioFeedbackDEPRECATED::AudioData::Builder::setData( ::capnp::Data::Reader value) {
+  ::capnp::_::PointerHelpers< ::capnp::Data>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::capnp::Data::Builder AudioFeedbackDEPRECATED::AudioData::Builder::initData(unsigned int size) {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), size);
+}
+inline void AudioFeedbackDEPRECATED::AudioData::Builder::adoptData(
+    ::capnp::Orphan< ::capnp::Data>&& value) {
+  ::capnp::_::PointerHelpers< ::capnp::Data>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::capnp::Data> AudioFeedbackDEPRECATED::AudioData::Builder::disownData() {
+  return ::capnp::_::PointerHelpers< ::capnp::Data>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline  ::uint32_t AudioFeedbackDEPRECATED::AudioData::Reader::getSampleRate() const {
+  return _reader.getDataField< ::uint32_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::uint32_t AudioFeedbackDEPRECATED::AudioData::Builder::getSampleRate() {
+  return _builder.getDataField< ::uint32_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void AudioFeedbackDEPRECATED::AudioData::Builder::setSampleRate( ::uint32_t value) {
+  _builder.setDataField< ::uint32_t>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
 }
 
 }  // namespace

@@ -18,15 +18,16 @@ dev = [
   "setuptools",  # for distutils
   "Cython",
   "scons",
-  "catch2 @ git+https://github.com/commaai/dependencies.git@release-catch2#subdirectory=catch2",
   "ruff",
-  "parameterized",
   "cppcheck",
   "cpplint",
   "codespell",
   "ty",
   "lefthook",
 ]
+
+[tool.setuptools.package-data]
+"*" = ["*.so"]
 
 # https://beta.ruff.rs/docs/configuration/#using-pyprojecttoml
 [tool.ruff]

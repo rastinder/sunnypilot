@@ -34,7 +34,7 @@ class UIStateSP:
     self.is_sp_release: bool = self.params.get_bool("IsReleaseSpBranch")
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
-      "gpsLocation", "liveTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "liveDelay"
+      "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay"
     ]
 
     self.sunnylink_state = SunnylinkState()
@@ -43,6 +43,7 @@ class UIStateSP:
     self.screensaver_enabled: bool = False
 
     self.active_bundle = None
+    self.model_runner_tinygrad: bool = False
     self.blindspot: bool = False
     self.chevron_metrics = None
     self.custom_interactive_timeout: int = 0
@@ -151,6 +152,7 @@ class UIStateSP:
 
     self._enforce_constraints()
     self.active_bundle = self.params.get("ModelManager_ActiveBundle")
+    self.model_runner_tinygrad = self.active_bundle is not None and self.active_bundle.get("runner") == "tinygrad"
     self.blindspot = self.params.get_bool("BlindSpot")
     self.chevron_metrics = self.params.get("ChevronInfo")
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
@@ -241,19 +243,26 @@ class DeviceSP:
   def _set_awake(self, on: bool, _ui_state=None):
     self._blocked_by_screensaver = False
 
-    if _ui_state.boot_offroad_mode == 1 and not on:
-      _ui_state.params.put_bool("OffroadMode", True)
-
     if not on and _ui_state.screensaver_enabled:
       if _ui_state.screensaver.was_dismissed:
-        if gui_app.get_active_widget() == _ui_state.screensaver:
-          gui_app.pop_widget()
+        self.dismiss_screensaver(_ui_state)
       elif _ui_state.screensaver.is_active:
         self._blocked_by_screensaver = True
       else:
         _ui_state.screensaver.initialize()
         gui_app.push_widget(_ui_state.screensaver)
         self._blocked_by_screensaver = True
+    else:
+      self.dismiss_screensaver(_ui_state)
+
+    # blocked runs every frame, so write only when actually sleeping
+    if _ui_state.boot_offroad_mode == 1 and not on and not self._blocked_by_screensaver:
+      _ui_state.params.put_bool("OffroadMode", True)
+
+  def dismiss_screensaver(self, _ui_state) -> None:
+    if gui_app.get_active_widget() == _ui_state.screensaver:
+      gui_app.pop_widget()
+    self._blocked_by_screensaver = False
 
   @staticmethod
   def set_onroad_brightness(_ui_state, awake: bool, cur_brightness: float) -> float:

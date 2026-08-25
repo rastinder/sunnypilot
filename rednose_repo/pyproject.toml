@@ -31,7 +31,7 @@ build-backend = "setuptools.build_meta"
 include = ["rednose*"]
 
 [tool.setuptools.package-data]
-"*" = ["helpers/chi2_lookup_table.npy", "templates/*"]
+"*" = ["*.so", "helpers/chi2_lookup_table.npy", "templates/*"]
 
 # https://beta.ruff.rs/docs/configuration/#using-pyprojecttoml
 [tool.ruff]
@@ -42,3 +42,7 @@ target-version = "py311"
 select = ["E", "F", "W", "PIE", "C4", "ISC", "RUF100", "A"]
 ignore = ["W292", "E741", "E402", "C408", "ISC003"]
 flake8-implicit-str-concat.allow-multiline = false
+
+[tool.ty.rules]
+unresolved-import = "ignore"  # Cython-compiled modules (.pyx) and dynamic SCons exports
+unresolved-attribute = "ignore"  # Cython-backed filter attributes
