@@ -1662,6 +1662,12 @@ public:
 
   inline  ::uint32_t getEta() const;
 
+  inline float getSpeed() const;
+
+  inline bool getCanceling() const;
+
+  inline bool getResuming() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -1698,6 +1704,15 @@ public:
 
   inline  ::uint32_t getEta();
   inline void setEta( ::uint32_t value);
+
+  inline float getSpeed();
+  inline void setSpeed(float value);
+
+  inline bool getCanceling();
+  inline void setCanceling(bool value);
+
+  inline bool getResuming();
+  inline void setResuming(bool value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -6081,6 +6096,48 @@ inline  ::uint32_t ModelManagerSP::DownloadProgress::Builder::getEta() {
 inline void ModelManagerSP::DownloadProgress::Builder::setEta( ::uint32_t value) {
   _builder.setDataField< ::uint32_t>(
       ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline float ModelManagerSP::DownloadProgress::Reader::getSpeed() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+
+inline float ModelManagerSP::DownloadProgress::Builder::getSpeed() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+inline void ModelManagerSP::DownloadProgress::Builder::setSpeed(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ModelManagerSP::DownloadProgress::Reader::getCanceling() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+
+inline bool ModelManagerSP::DownloadProgress::Builder::getCanceling() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+inline void ModelManagerSP::DownloadProgress::Builder::setCanceling(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ModelManagerSP::DownloadProgress::Reader::getResuming() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+
+inline bool ModelManagerSP::DownloadProgress::Builder::getResuming() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+inline void ModelManagerSP::DownloadProgress::Builder::setResuming(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS, value);
 }
 
 inline bool ModelManagerSP::Chunk::Reader::hasFileName() const {
