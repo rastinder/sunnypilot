@@ -24,9 +24,4 @@ FW_VERSIONS_EXT = {
       b'68502996AC',
     ],
   },
-  CAR.RAM_HD_5TH_GEN: {
-    (Ecu.engine, 0x7e0, None): [
-      b'52421332AG',
-    ],
-  },
 }
