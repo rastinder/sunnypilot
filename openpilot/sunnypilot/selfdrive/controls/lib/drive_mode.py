@@ -1,26 +1,28 @@
 """
-Drive-mode profiles (eco / normal / sport) for sunnypilot longitudinal control.
+Two independent longitudinal axes for sunnypilot.
 
-sunnypilot exposes one three-way longitudinal selector to the driver: Driving
-Personality (relaxed / standard / aggressive). It is settable from the device UI, from
-Sunnylink, and from the car's own ACC distance button, so it is the natural place to
-hang a drive-mode abstraction:
+1. Driving Personality (relaxed / standard / aggressive)
+   How close the car follows and how eagerly it closes a gap. This is the existing
+   sunnypilot selector (device UI, Sunnylink, and the car's own ACC distance button) and
+   keeps its meaning: personality decides the following time.
 
-  relaxed    -> eco     gentle launch, moderate gap, smoother jerk
-  standard   -> normal  the default behaviour
-  aggressive -> sport   sharp launch, tightest gap, sharper jerk
+2. Drive mode (eco / normal / sport)
+   How hard the car accelerates once it decides to. Selected with the DriveModeProfile
+   param (0 = eco, 1 = normal, 2 = sport) and read live so it can be changed while
+   driving. Drive mode does NOT change the following gap.
 
-Two behaviours beyond the upstream personality table:
+They are deliberately separate: relaxed + sport (hang back, but pull hard when the gap
+opens) and aggressive + eco (sit close, accelerate gently) are both valid combinations.
 
-* Following time is reduced in all three modes (upstream: 1.75 / 1.45 / 1.25 s), with a
-  hard safety floor so no setting can command a gap tighter than MIN_T_FOLLOW.
-* ``launch_boost`` is added to the MPC acceleration limit while pulling away from a
-  standstill behind a lead that has actually started moving, so the car reacts when the
-  gap opens instead of waiting for the solver to converge on its own.
+Following times are reduced from upstream (1.75 / 1.45 / 1.25 s) but keep their relative
+order, with a hard safety floor so no setting can command a tighter gap than
+MIN_T_FOLLOW.
 """
 
+import time
+
 # cereal needs capnp, which is not available in lightweight unit-test environments.
-# The personalities are a plain 0/1/2 enum, so fall back to those values.
+# Both selectors are plain 0/1/2 enums, so fall back to those values.
 try:  # pragma: no cover - depends on the runtime environment
   from openpilot.cereal import log
 
@@ -30,62 +32,118 @@ try:  # pragma: no cover - depends on the runtime environment
 except Exception:  # pragma: no cover
   RELAXED, STANDARD, AGGRESSIVE = 0, 1, 2
 
-# Never command a following gap tighter than this, whatever the mode says.
+ECO, NORMAL, SPORT = 0, 1, 2
+
+# Drive mode is selected through this param so it can change without a rebuild.
+DRIVE_MODE_PARAM = "DriveModeProfile"
+
+# Never command a following gap tighter than this, whatever the personality says.
 MIN_T_FOLLOW = 0.9
+
+# Personality (following) table: upstream is 1.75 / 1.45 / 1.25 s.
+PERSONALITY_T_FOLLOW = {
+  RELAXED: 1.40,
+  STANDARD: 1.10,
+  AGGRESSIVE: 0.90,
+}
+UPSTREAM_T_FOLLOW = {
+  RELAXED: 1.75,
+  STANDARD: 1.45,
+  AGGRESSIVE: 1.25,
+}
 
 # Launch detection thresholds while stopped behind a lead.
 LAUNCH_EGO_SPEED = 1.0    # m/s - ego is still (essentially) stopped below this
 LAUNCH_LEAD_SPEED = 0.3   # m/s - lead counts as moving above this
 
-# Upstream personality following times, kept so the tests can assert we stay tighter.
-UPSTREAM_T_FOLLOW = {RELAXED: 1.75, STANDARD: 1.45, AGGRESSIVE: 1.25}
-
 
 class DriveModeProfile:
-  """Longitudinal behaviour for a single drive mode."""
+  """Acceleration behaviour for one drive mode. Following distance is not here."""
 
-  def __init__(self, name: str, t_follow: float, accel_scale: float, jerk_scale: float, launch_boost: float):
+  def __init__(self, name: str, accel_scale: float, jerk_scale: float, launch_boost: float):
     self.name = name
-    self.t_follow = max(t_follow, MIN_T_FOLLOW)
     self.accel_scale = accel_scale
     self.jerk_scale = jerk_scale
     self.launch_boost = launch_boost
 
   def __repr__(self) -> str:
-    return (f"DriveModeProfile({self.name!r}, t_follow={self.t_follow}, "
-            f"accel_scale={self.accel_scale}, jerk_scale={self.jerk_scale}, launch_boost={self.launch_boost})")
+    return (f"DriveModeProfile({self.name!r}, accel_scale={self.accel_scale}, "
+            f"jerk_scale={self.jerk_scale}, launch_boost={self.launch_boost})")
 
 
-# accel_scale multiplies the vehicle's ACCEL_MAX, so 1.0 is "everything the car can do"
-# (sport). Jerk scale is a cost multiplier: higher = smoother, lower = sharper.
-PROFILES = {
-  RELAXED: DriveModeProfile("eco", t_follow=1.40, accel_scale=0.70, jerk_scale=1.50, launch_boost=0.20),
-  STANDARD: DriveModeProfile("normal", t_follow=1.10, accel_scale=0.90, jerk_scale=1.00, launch_boost=0.40),
-  AGGRESSIVE: DriveModeProfile("sport", t_follow=0.90, accel_scale=1.00, jerk_scale=0.60, launch_boost=0.60),
+# accel_scale multiplies the vehicle's ACCEL_MAX, so 1.0 is everything the car can do
+# (sport). jerk_scale is a cost multiplier: higher = smoother, lower = sharper.
+DRIVE_MODES = {
+  ECO: DriveModeProfile("eco", accel_scale=0.70, jerk_scale=1.50, launch_boost=0.20),
+  NORMAL: DriveModeProfile("normal", accel_scale=0.90, jerk_scale=1.00, launch_boost=0.40),
+  SPORT: DriveModeProfile("sport", accel_scale=1.00, jerk_scale=0.60, launch_boost=0.60),
 }
 
 
-def get_profile(personality) -> DriveModeProfile:
-  """Profile for a personality value. Unknown values fall back to normal."""
-  return PROFILES.get(personality, PROFILES[STANDARD])
+def _check_personality(personality) -> None:
+  if personality not in (RELAXED, STANDARD, AGGRESSIVE):
+    raise NotImplementedError("Longitudinal personality not supported")
 
 
 def get_t_follow(personality) -> float:
-  return get_profile(personality).t_follow
+  """Following time for a driving personality. This is the gap axis."""
+  _check_personality(personality)
+  return max(PERSONALITY_T_FOLLOW[personality], MIN_T_FOLLOW)
 
 
-def get_accel_scale(personality) -> float:
-  return get_profile(personality).accel_scale
+def get_profile(drive_mode) -> DriveModeProfile:
+  """Acceleration profile for a drive mode. Unknown values fall back to normal."""
+  return DRIVE_MODES.get(drive_mode, DRIVE_MODES[NORMAL])
 
 
-def get_jerk_scale(personality) -> float:
-  return get_profile(personality).jerk_scale
+def get_accel_scale(drive_mode) -> float:
+  return get_profile(drive_mode).accel_scale
 
 
-def get_launch_boost(personality) -> float:
-  return get_profile(personality).launch_boost
+def get_jerk_scale(drive_mode) -> float:
+  return get_profile(drive_mode).jerk_scale
+
+
+def get_launch_boost(drive_mode) -> float:
+  return get_profile(drive_mode).launch_boost
 
 
 def is_launching(v_ego: float, v_lead: float, lead_present: bool) -> bool:
   """True while pulling away from a stop behind a lead that has started moving."""
   return bool(lead_present and v_ego < LAUNCH_EGO_SPEED and v_lead > LAUNCH_LEAD_SPEED)
+
+
+class DriveModeSelector:
+  """Reads the DriveModeProfile param, refreshing periodically so changes apply live."""
+
+  REFRESH_SECONDS = 2.0
+
+  def __init__(self, params=None, clock=time.monotonic):
+    if params is None:
+      from openpilot.common.params import Params
+      params = Params()
+    self._params = params
+    self._clock = clock
+    self._last_read = float("-inf")
+    self._drive_mode = NORMAL
+
+  @property
+  def drive_mode(self) -> int:
+    return self._drive_mode
+
+  def update(self) -> int:
+    now = self._clock()
+    if now - self._last_read >= self.REFRESH_SECONDS:
+      self._last_read = now
+      try:
+        raw = self._params.get(DRIVE_MODE_PARAM)
+        self._drive_mode = int(raw) if raw not in (None, "") else NORMAL
+      except Exception:
+        self._drive_mode = NORMAL
+      if self._drive_mode not in DRIVE_MODES:
+        self._drive_mode = NORMAL
+    return self._drive_mode
+
+  @property
+  def profile(self) -> DriveModeProfile:
+    return get_profile(self._drive_mode)

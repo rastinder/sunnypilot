@@ -60,25 +60,20 @@ COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 4.0
 MIN_X_LEAD_FACTOR = 0.5
 
-def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
+def get_jerk_factor(personality=log.LongitudinalPersonality.standard, drive_mode_profile=None):
   if personality not in (log.LongitudinalPersonality.relaxed,
                          log.LongitudinalPersonality.standard,
                          log.LongitudinalPersonality.aggressive):
     raise NotImplementedError("Longitudinal personality not supported")
 
-  # eco / normal / sport jerk scaling (see drive_mode.py)
+  # personality sets the baseline, the separate eco/normal/sport drive mode scales it
   base = 0.5 if personality==log.LongitudinalPersonality.aggressive else 1.0
-  return base * drive_mode.get_jerk_scale(personality)
+  return base * drive_mode.get_jerk_scale(drive_mode_profile)
 
 
 def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
-  if personality not in (log.LongitudinalPersonality.relaxed,
-                         log.LongitudinalPersonality.standard,
-                         log.LongitudinalPersonality.aggressive):
-    raise NotImplementedError("Longitudinal personality not supported")
-
-  # eco / normal / sport following times, all tighter than upstream and floored at
-  # drive_mode.MIN_T_FOLLOW
+  # Following time belongs to the driving personality (relaxed / standard / aggressive),
+  # not to the eco / normal / sport drive mode. See drive_mode.py.
   return drive_mode.get_t_follow(personality)
 
 def get_stopped_equivalence_factor(v_lead):
@@ -264,8 +259,8 @@ class LongitudinalMpc:
     for i in range(N):
       self.solver.cost_set(i, 'Zl', Zl)
 
-  def set_weights(self, prev_accel_constraint=True, personality=log.LongitudinalPersonality.standard):
-    jerk_factor = get_jerk_factor(personality)
+  def set_weights(self, prev_accel_constraint=True, personality=log.LongitudinalPersonality.standard, drive_mode_profile=None):
+    jerk_factor = get_jerk_factor(personality, drive_mode_profile)
     a_change_cost = A_CHANGE_COST if prev_accel_constraint else 0
     cost_weights = [X_EGO_OBSTACLE_COST, X_EGO_COST, V_EGO_COST, A_EGO_COST, jerk_factor * a_change_cost, jerk_factor * J_EGO_COST]
     constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, DANGER_ZONE_COST]
@@ -310,14 +305,14 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def launch_accel_boost(self, radarstate, personality):
+  def launch_accel_boost(self, radarstate, drive_mode_profile):
     """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
     lead = radarstate.leadOne
     if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
-      return drive_mode.get_launch_boost(personality)
+      return drive_mode.get_launch_boost(drive_mode_profile)
     return 0.0
 
-  def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
+  def update(self, radarstate, personality=log.LongitudinalPersonality.standard, drive_mode_profile=None):
     t_follow = get_T_FOLLOW(personality)
 
     lead_xv_0 = self.process_lead(radarstate.leadOne)
@@ -339,7 +334,7 @@ class LongitudinalMpc:
 
     self.params[:,0] = ACCEL_MIN
     # eco / normal / sport accel limit, plus launch headroom while pulling away from a stop
-    self.params[:,1] = ACCEL_MAX * drive_mode.get_accel_scale(personality) + self.launch_accel_boost(radarstate, personality)
+    self.params[:,1] = ACCEL_MAX * drive_mode.get_accel_scale(drive_mode_profile) + self.launch_accel_boost(radarstate, drive_mode_profile)
     self.params[:,2] = np.min(x_obstacles, axis=1)
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow

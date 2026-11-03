@@ -1,53 +1,118 @@
+import itertools
 import unittest
 
 from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
 
 
-class TestDriveModeProfiles(unittest.TestCase):
-  def test_three_modes_are_named_eco_normal_sport(self):
-    names = set()
-    for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
-      names.add(drive_mode.get_profile(personality).name)
-    self.assertEqual(names, {"eco", "normal", "sport"})
+class TestPersonalityFollowingGap(unittest.TestCase):
+  """Personality (relaxed/standard/aggressive) owns the following distance."""
 
-  def test_following_time_tightens_with_mode(self):
-    eco = drive_mode.get_t_follow(drive_mode.RELAXED)
-    normal = drive_mode.get_t_follow(drive_mode.STANDARD)
-    sport = drive_mode.get_t_follow(drive_mode.AGGRESSIVE)
-    self.assertGreater(eco, normal)
-    self.assertGreater(normal, sport)
+  def test_following_time_tightens_with_personality(self):
+    relaxed = drive_mode.get_t_follow(drive_mode.RELAXED)
+    standard = drive_mode.get_t_follow(drive_mode.STANDARD)
+    aggressive = drive_mode.get_t_follow(drive_mode.AGGRESSIVE)
+    self.assertGreater(relaxed, standard)
+    self.assertGreater(standard, aggressive)
 
   def test_following_time_never_goes_below_the_floor(self):
     for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
       self.assertGreaterEqual(drive_mode.get_t_follow(personality), drive_mode.MIN_T_FOLLOW)
 
-  def test_every_mode_is_tighter_than_the_upstream_personality_table(self):
+  def test_every_personality_is_tighter_than_upstream(self):
     for personality, upstream in drive_mode.UPSTREAM_T_FOLLOW.items():
       self.assertLess(drive_mode.get_t_follow(personality), upstream)
 
+  def test_unknown_personality_raises(self):
+    with self.assertRaises(NotImplementedError):
+      drive_mode.get_t_follow(99)
+
+
+class TestDriveModeAcceleration(unittest.TestCase):
+  """eco/normal/sport owns acceleration only."""
+
+  def test_three_modes_are_named_eco_normal_sport(self):
+    names = {drive_mode.get_profile(m).name for m in (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT)}
+    self.assertEqual(names, {"eco", "normal", "sport"})
+
   def test_acceleration_scales_up_with_mode(self):
-    eco = drive_mode.get_accel_scale(drive_mode.RELAXED)
-    normal = drive_mode.get_accel_scale(drive_mode.STANDARD)
-    sport = drive_mode.get_accel_scale(drive_mode.AGGRESSIVE)
+    eco = drive_mode.get_accel_scale(drive_mode.ECO)
+    normal = drive_mode.get_accel_scale(drive_mode.NORMAL)
+    sport = drive_mode.get_accel_scale(drive_mode.SPORT)
     self.assertLess(eco, normal)
     self.assertLess(normal, sport)
 
   def test_accel_scale_never_exceeds_vehicle_limit(self):
-    for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
-      self.assertLessEqual(drive_mode.get_accel_scale(personality), 1.0)
+    for mode in (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT):
+      self.assertLessEqual(drive_mode.get_accel_scale(mode), 1.0)
 
   def test_eco_jerk_is_softer_than_sport(self):
-    self.assertGreater(drive_mode.get_jerk_scale(drive_mode.RELAXED),
-                       drive_mode.get_jerk_scale(drive_mode.AGGRESSIVE))
+    self.assertGreater(drive_mode.get_jerk_scale(drive_mode.ECO),
+                       drive_mode.get_jerk_scale(drive_mode.SPORT))
 
   def test_launch_boost_is_present_and_ordered(self):
-    boosts = [drive_mode.get_launch_boost(p) for p in
-              (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE)]
+    boosts = [drive_mode.get_launch_boost(m) for m in
+              (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT)]
     self.assertTrue(all(b > 0.0 for b in boosts))
     self.assertEqual(boosts, sorted(boosts))
 
-  def test_unknown_personality_falls_back_to_normal(self):
+  def test_unknown_drive_mode_falls_back_to_normal(self):
     self.assertEqual(drive_mode.get_profile(99).name, "normal")
+
+
+class TestAxesAreIndependent(unittest.TestCase):
+  def test_drive_mode_never_changes_the_following_gap(self):
+    # every personality/drive-mode combination keeps the gap set by personality alone
+    for personality, mode in itertools.product(
+        (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE),
+        (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT)):
+      self.assertEqual(drive_mode.get_t_follow(personality),
+                       drive_mode.get_t_follow(personality))
+      self.assertNotIn("t_follow", drive_mode.get_profile(mode).__dict__)
+
+  def test_relaxed_plus_sport_is_a_valid_combination(self):
+    # hang back, but pull hard when the gap opens
+    self.assertEqual(drive_mode.get_t_follow(drive_mode.RELAXED),
+                     max(drive_mode.PERSONALITY_T_FOLLOW.values()))
+    self.assertEqual(drive_mode.get_accel_scale(drive_mode.SPORT), 1.0)
+
+
+class TestDriveModeSelector(unittest.TestCase):
+  class FakeParams:
+    def __init__(self, value):
+      self.value = value
+
+    def get(self, key):
+      if isinstance(self.value, Exception):
+        raise self.value
+      return self.value
+
+  def test_reads_param_and_defaults_to_normal(self):
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(None)).update(), drive_mode.NORMAL)
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(2)).update(), drive_mode.SPORT)
+
+  def test_invalid_value_falls_back_to_normal(self):
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams("garbage")).update(), drive_mode.NORMAL)
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(7)).update(), drive_mode.NORMAL)
+
+  def test_param_errors_fall_back_to_normal(self):
+    selector = drive_mode.DriveModeSelector(self.FakeParams(ValueError("boom")))
+    self.assertEqual(selector.update(), drive_mode.NORMAL)
+
+  def test_value_refreshes_after_the_interval(self):
+    now = [0.0]
+    params = self.FakeParams(0)
+    selector = drive_mode.DriveModeSelector(params, clock=lambda: now[0])
+    self.assertEqual(selector.update(), drive_mode.ECO)
+    params.value = 2
+    now[0] += 0.5
+    self.assertEqual(selector.update(), drive_mode.ECO)   # cached
+    now[0] += drive_mode.DriveModeSelector.REFRESH_SECONDS
+    self.assertEqual(selector.update(), drive_mode.SPORT)  # picked up live
+
+  def test_profile_property_matches_drive_mode(self):
+    selector = drive_mode.DriveModeSelector(self.FakeParams(2))
+    selector.update()
+    self.assertEqual(selector.profile.name, "sport")
 
 
 class TestLaunchDetection(unittest.TestCase):
