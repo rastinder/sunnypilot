@@ -19,6 +19,10 @@ class TogglesLayoutMici(NavScroller):
                                                                "Aggressive follows closer, with firmer gas and braking.\n" +
                                                                "Relaxed leaves more space.\n" +
                                                                "Use the steering wheel distance button on supported cars.")
+    self._drive_mode_toggle = BigMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
+                                                  description="Eco accelerates gently and stays comfortable.\n" +
+                                                              "Sport uses the car's full acceleration.\n" +
+                                                              "Following distance is a separate setting above.")
     self._initial_cruise_speed = InitialCruiseSpeedButton()
     self._initial_cruise_speed.set_visible(lambda: ui_state.CP is not None and ui_state.has_longitudinal_control and not ui_state.CP.pcmCruise)
     is_metric_toggle = BigToggle("use metric units", initial_state=ui_state.params.get_bool("IsMetric"), toggle_callback=self._on_metric_toggle)
@@ -40,6 +44,7 @@ class TogglesLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       self._personality_toggle,
+      self._drive_mode_toggle,
       self._initial_cruise_speed,
       is_metric_toggle,
       ldw_toggle,
@@ -92,6 +97,7 @@ class TogglesLayoutMici(NavScroller):
 
     if ui_state.CP is not None:
       self._personality_toggle.set_visible(ui_state.has_longitudinal_control)
+      self._drive_mode_toggle.set_visible(ui_state.has_longitudinal_control)
 
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:

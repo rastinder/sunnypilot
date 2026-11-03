@@ -55,8 +55,13 @@ class TestDriveModeAcceleration(unittest.TestCase):
     self.assertTrue(all(b > 0.0 for b in boosts))
     self.assertEqual(boosts, sorted(boosts))
 
-  def test_unknown_drive_mode_falls_back_to_normal(self):
-    self.assertEqual(drive_mode.get_profile(99).name, "normal")
+  def test_default_mode_is_eco(self):
+    self.assertEqual(drive_mode.DEFAULT_DRIVE_MODE, drive_mode.ECO)
+    self.assertEqual(drive_mode.get_profile(drive_mode.DEFAULT_DRIVE_MODE).name, "eco")
+
+  def test_unknown_drive_mode_falls_back_to_the_default(self):
+    self.assertEqual(drive_mode.get_profile(99).name, "eco")
+    self.assertEqual(drive_mode.get_accel_scale(99), drive_mode.get_accel_scale(drive_mode.ECO))
 
 
 class TestAxesAreIndependent(unittest.TestCase):
@@ -86,17 +91,17 @@ class TestDriveModeSelector(unittest.TestCase):
         raise self.value
       return self.value
 
-  def test_reads_param_and_defaults_to_normal(self):
-    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(None)).update(), drive_mode.NORMAL)
+  def test_reads_param_and_defaults_to_eco(self):
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(None)).update(), drive_mode.ECO)
     self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(2)).update(), drive_mode.SPORT)
 
-  def test_invalid_value_falls_back_to_normal(self):
-    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams("garbage")).update(), drive_mode.NORMAL)
-    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(7)).update(), drive_mode.NORMAL)
+  def test_invalid_value_falls_back_to_eco(self):
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams("garbage")).update(), drive_mode.ECO)
+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(7)).update(), drive_mode.ECO)
 
-  def test_param_errors_fall_back_to_normal(self):
+  def test_param_errors_fall_back_to_eco(self):
     selector = drive_mode.DriveModeSelector(self.FakeParams(ValueError("boom")))
-    self.assertEqual(selector.update(), drive_mode.NORMAL)
+    self.assertEqual(selector.update(), drive_mode.ECO)
 
   def test_value_refreshes_after_the_interval(self):
     now = [0.0]

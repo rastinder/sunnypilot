@@ -356,3 +356,12 @@ class TestItemCompleteness(OpenpilotTestCase):
     assert lp is not None
     assert "options" in lp
     assert len(lp["options"]) == 3
+
+  def test_drive_mode_has_eco_normal_sport(self, schema):
+    """DriveModeProfile is its own axis (acceleration), separate from personality (gap)."""
+    cruise = next(p for p in schema["panels"] if p["id"] == "cruise")
+    dm = next((i for i in _iter_panel_items(cruise) if i["key"] == "DriveModeProfile"), None)
+    assert dm is not None
+    assert dm["widget"] == "multiple_button"
+    assert [o["label"] for o in dm["options"]] == ["Eco", "Normal", "Sport"]
+    assert [o["value"] for o in dm["options"]] == [0, 1, 2]

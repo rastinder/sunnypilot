@@ -23,6 +23,10 @@ DESCRIPTIONS = {
     "Your attention is required at all times to use this feature."
   ),
   "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage sunnypilot."),
+  "DriveModeProfile": tr_noop(
+    "Eco accelerates gently and stays comfortable. Normal is a middle ground. Sport uses the car's full acceleration " +
+    "when pulling away and closing a gap. This is separate from following distance, so any combination works."
+  ),
   "LongitudinalPersonality": tr_noop(
     "Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. " +
     "In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
@@ -100,6 +104,16 @@ class TogglesLayout(Widget):
       icon="speed_limit.png"
     )
 
+    self._drive_mode_setting = multiple_button_item(
+      lambda: tr("Drive Mode"),
+      lambda: tr(DESCRIPTIONS["DriveModeProfile"]),
+      buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
+      button_width=300,
+      callback=self._set_drive_mode,
+      selected_index=self._params.get("DriveModeProfile", return_default=True),
+      icon="speed_limit.png"
+    )
+
     self._toggles = {}
     self._initial_cruise_speed = ListItem(
       title=lambda: tr("Initial Max Speed"),
@@ -140,6 +154,7 @@ class TogglesLayout(Widget):
       # insert longitudinal personality after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+        self._toggles["DriveModeProfile"] = self._drive_mode_setting
         self._toggles["InitialCruiseSpeedKph"] = self._initial_cruise_speed
 
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
@@ -164,6 +179,7 @@ class TogglesLayout(Widget):
 
     if ui_state.CP is not None:
       self._long_personality_setting.action_item.set_enabled(ui_state.has_longitudinal_control)
+      self._drive_mode_setting.action_item.set_enabled(ui_state.has_longitudinal_control)
 
     # TODO: make a param control list item so we don't need to manage internal state as much here
     # refresh toggles from params to mirror external changes
@@ -188,3 +204,6 @@ class TogglesLayout(Widget):
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index, block=True)
+
+  def _set_drive_mode(self, button_index: int):
+    self._params.put("DriveModeProfile", button_index, block=True)

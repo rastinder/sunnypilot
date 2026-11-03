@@ -621,6 +621,33 @@
               ]
             },
             {
+              "key": "DriveModeProfile",
+              "widget": "multiple_button",
+              "title": "Drive Mode",
+              "description": "Eco accelerates gently and stays comfortable. Normal is a middle ground. Sport uses the car's full acceleration when pulling away and closing a gap. This is independent of driving personality, so any combination works.",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Eco"
+                },
+                {
+                  "value": 1,
+                  "label": "Normal"
+                },
+                {
+                  "value": 2,
+                  "label": "Sport"
+                }
+              ],
+              "enablement": [
+                {
+                  "type": "capability",
+                  "field": "has_longitudinal_control",
+                  "equals": true
+                }
+              ]
+            },
+            {
               "key": "IntelligentCruiseButtonManagement",
               "widget": "toggle",
               "title": "Intelligent Cruise Button Management (ICBM) (Alpha)",

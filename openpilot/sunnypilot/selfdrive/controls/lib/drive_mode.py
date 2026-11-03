@@ -10,6 +10,8 @@ Two independent longitudinal axes for sunnypilot.
    How hard the car accelerates once it decides to. Selected with the DriveModeProfile
    param (0 = eco, 1 = normal, 2 = sport) and read live so it can be changed while
    driving. Drive mode does NOT change the following gap.
+   Eco is the default (FrogPilot ships Sport as its default acceleration profile; this
+   fork deliberately starts gentle and lets you opt into normal/sport).
 
 They are deliberately separate: relaxed + sport (hang back, but pull hard when the gap
 opens) and aggressive + eco (sit close, accelerate gently) are both valid combinations.
@@ -36,6 +38,9 @@ ECO, NORMAL, SPORT = 0, 1, 2
 
 # Drive mode is selected through this param so it can change without a rebuild.
 DRIVE_MODE_PARAM = "DriveModeProfile"
+
+# Used when the param is unset, unreadable or unrecognised: start gentle.
+DEFAULT_DRIVE_MODE = ECO
 
 # Never command a following gap tighter than this, whatever the personality says.
 MIN_T_FOLLOW = 0.9
@@ -92,8 +97,8 @@ def get_t_follow(personality) -> float:
 
 
 def get_profile(drive_mode) -> DriveModeProfile:
-  """Acceleration profile for a drive mode. Unknown values fall back to normal."""
-  return DRIVE_MODES.get(drive_mode, DRIVE_MODES[NORMAL])
+  """Acceleration profile for a drive mode. Unknown values fall back to the default."""
+  return DRIVE_MODES.get(drive_mode, DRIVE_MODES[DEFAULT_DRIVE_MODE])
 
 
 def get_accel_scale(drive_mode) -> float:
@@ -125,7 +130,7 @@ class DriveModeSelector:
     self._params = params
     self._clock = clock
     self._last_read = float("-inf")
-    self._drive_mode = NORMAL
+    self._drive_mode = DEFAULT_DRIVE_MODE
 
   @property
   def drive_mode(self) -> int:
@@ -137,11 +142,11 @@ class DriveModeSelector:
       self._last_read = now
       try:
         raw = self._params.get(DRIVE_MODE_PARAM)
-        self._drive_mode = int(raw) if raw not in (None, "") else NORMAL
+        self._drive_mode = int(raw) if raw not in (None, "") else DEFAULT_DRIVE_MODE
       except Exception:
-        self._drive_mode = NORMAL
+        self._drive_mode = DEFAULT_DRIVE_MODE
       if self._drive_mode not in DRIVE_MODES:
-        self._drive_mode = NORMAL
+        self._drive_mode = DEFAULT_DRIVE_MODE
     return self._drive_mode
 
   @property
