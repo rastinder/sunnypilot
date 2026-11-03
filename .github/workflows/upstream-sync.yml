@@ -98,6 +98,21 @@ jobs:
             launch_path.write_text(launch)
           PY
 
+            # Re-apply the local drive-mode tuning patch. This rewrite path replaces the
+            # whole tree with upstream, which would otherwise drop the tuning on every
+            # re-squash, so the patch lives on the separate `tuning` branch (the sync never
+            # rewrites that branch). Failing here is deliberate: silently shipping a build
+            # without the tuning would look like the feature simply stopped working.
+            rm -f /tmp/drive-mode.patch
+            if git fetch --depth=1 origin tuning && git show FETCH_HEAD:patches/drive-mode.patch > /tmp/drive-mode.patch; then
+              git apply /tmp/drive-mode.patch \
+                || { echo "::error::drive-mode patch does not apply to the new upstream tree; refresh patches/drive-mode.patch on the tuning branch"; exit 1; }
+              echo "Re-applied drive-mode tuning patch."
+            else
+              echo "::error::cannot read patches/drive-mode.patch from origin/tuning"
+              exit 1
+            fi
+
             mkdir -p .github/workflows
             cp "$WORKFLOW_BACKUP" .github/workflows/upstream-sync.yml
             git add -A
@@ -124,7 +139,11 @@ jobs:
             || { echo "::error::SUNNYLINK bypass marker missing from policy.py after merge!"; exit 1; }
           grep -q 'fix_pay_attention' launch_env.sh \
             || { echo "::error::fix_pay_attention hook missing from launch_env.sh after merge!"; exit 1; }
-          echo "Custom distraction-disable mods verified intact."
+          test -f openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py \
+            || { echo "::error::drive_mode.py missing after merge!"; exit 1; }
+          grep -q 'launch_accel_boost' openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py \
+            || { echo "::error::drive-mode tuning missing from long_mpc.py after merge!"; exit 1; }
+          echo "Custom distraction-disable and drive-mode mods verified intact."
 
       - name: Push to fork staging
         if: steps.merge.outputs.result == 'merged'
