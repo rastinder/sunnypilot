@@ -9,6 +9,7 @@ from openpilot.common.swaglog import cloudlog
 # WARNING: imports outside of constants will not trigger a rebuild
 from openpilot.selfdrive.modeld.constants import index_function
 from openpilot.selfdrive.controls.radard import _LEAD_ACCEL_TAU
+from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
 
 if __name__ == '__main__':  # generating code
   from acados.acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
@@ -54,29 +55,31 @@ T_IDXS = np.array(T_IDXS_LST)
 FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
-STOP_DISTANCE = 6.0
+# Tighter standstill gap than upstream (6.0 m): the car closes up on a stopped lead and
+# pulls away sooner once that lead moves (see drive_mode.launch_boost).
+STOP_DISTANCE = 4.0
 MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
-  if personality==log.LongitudinalPersonality.relaxed:
-    return 1.0
-  elif personality==log.LongitudinalPersonality.standard:
-    return 1.0
-  elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.5
-  else:
+  if personality not in (log.LongitudinalPersonality.relaxed,
+                         log.LongitudinalPersonality.standard,
+                         log.LongitudinalPersonality.aggressive):
     raise NotImplementedError("Longitudinal personality not supported")
+
+  # eco / normal / sport jerk scaling (see drive_mode.py)
+  base = 0.5 if personality==log.LongitudinalPersonality.aggressive else 1.0
+  return base * drive_mode.get_jerk_scale(personality)
 
 
 def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
-  if personality==log.LongitudinalPersonality.relaxed:
-    return 1.75
-  elif personality==log.LongitudinalPersonality.standard:
-    return 1.45
-  elif personality==log.LongitudinalPersonality.aggressive:
-    return 1.25
-  else:
+  if personality not in (log.LongitudinalPersonality.relaxed,
+                         log.LongitudinalPersonality.standard,
+                         log.LongitudinalPersonality.aggressive):
     raise NotImplementedError("Longitudinal personality not supported")
+
+  # eco / normal / sport following times, all tighter than upstream and floored at
+  # drive_mode.MIN_T_FOLLOW
+  return drive_mode.get_t_follow(personality)
 
 def get_stopped_equivalence_factor(v_lead):
   return (v_lead**2) / (2 * COMFORT_BRAKE)
@@ -307,6 +310,13 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
+  def launch_accel_boost(self, radarstate, personality):
+    """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
+    lead = radarstate.leadOne
+    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
+      return drive_mode.get_launch_boost(personality)
+    return 0.0
+
   def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
     t_follow = get_T_FOLLOW(personality)
 
@@ -328,7 +338,8 @@ class LongitudinalMpc:
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
 
     self.params[:,0] = ACCEL_MIN
-    self.params[:,1] = ACCEL_MAX
+    # eco / normal / sport accel limit, plus launch headroom while pulling away from a stop
+    self.params[:,1] = ACCEL_MAX * drive_mode.get_accel_scale(personality) + self.launch_accel_boost(radarstate, personality)
     self.params[:,2] = np.min(x_obstacles, axis=1)
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow

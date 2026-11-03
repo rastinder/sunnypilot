@@ -14,7 +14,9 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
+from openpilot.cereal import log
 
+from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
 
 J_CRUISE_VALS = [1.6, 1.2, 0.8, 0.6]
@@ -23,8 +25,10 @@ A_CRUISE_MIN = -0.5
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 
-def get_cruise_accel(v_cruise, v_ego, a_cruise_prev, dt):
-  target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, ACCEL_MAX)
+def get_cruise_accel(v_cruise, v_ego, a_cruise_prev, dt, personality=log.LongitudinalPersonality.standard):
+  # eco / normal / sport scaling: the selected drive mode sets how hard the car pulls
+  max_accel = ACCEL_MAX * drive_mode.get_accel_scale(personality)
+  target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, max_accel)
   j_cruise = np.interp(v_ego, J_CRUISE_BP, J_CRUISE_VALS)
   target_accel = float(np.clip(target_accel, a_cruise_prev - j_cruise * dt, a_cruise_prev + j_cruise * dt))
 
@@ -106,7 +110,8 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
-    self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.dt)
+    self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.dt,
+                                     personality=sm['selfdriveState'].personality)
     cruise_should_stop = should_stop(v_ego, self.a_cruise)
 
     output_a_target_e2e = self.accel_boost.update(sm, output_a_target_e2e, output_a_target_mpc, self.a_cruise)
