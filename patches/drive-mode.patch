@@ -1,39 +1,74 @@
+diff --git a/openpilot/common/params_keys.h b/openpilot/common/params_keys.h
+index 1ccd8110a6..2e9e5a15ed 100644
+--- a/openpilot/common/params_keys.h
++++ b/openpilot/common/params_keys.h
+@@ -86,6 +86,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
+     {"LateralManeuverMode", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+     {"LongitudinalManeuverMode", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
+     {"LongitudinalPersonality", {PERSISTENT | BACKUP, INT, std::to_string(static_cast<int>(cereal::LongitudinalPersonality::STANDARD))}},
++    // eco / normal / sport acceleration profile. Independent of LongitudinalPersonality (following gap).
++    // Defaults to 0 (eco); see sunnypilot/selfdrive/controls/lib/drive_mode.py.
++    {"DriveModeProfile", {PERSISTENT | BACKUP, INT, "0"}},
+     {"NetworkMetered", {PERSISTENT | BACKUP, BOOL}},
+     {"ObdMultiplexingChanged", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
+     {"ObdMultiplexingEnabled", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
 diff --git a/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py b/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
-index c6cbddda0d..20e9ed2210 100755
+index 0a0722fbc6..20e9ed2210 100755
 --- a/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
 +++ b/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
-@@ -60,25 +60,20 @@ COMFORT_BRAKE = 2.5
- STOP_DISTANCE = 4.0
+@@ -9,6 +9,7 @@ from openpilot.common.swaglog import cloudlog
+ # WARNING: imports outside of constants will not trigger a rebuild
+ from openpilot.selfdrive.modeld.constants import index_function
+ from openpilot.selfdrive.controls.radard import _LEAD_ACCEL_TAU
++from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
+ 
+ if __name__ == '__main__':  # generating code
+   from acados.acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
+@@ -54,29 +55,26 @@ T_IDXS = np.array(T_IDXS_LST)
+ FCW_IDXS = T_IDXS < 5.0
+ T_DIFFS = np.diff(T_IDXS, prepend=[0.])
+ COMFORT_BRAKE = 2.5
+-STOP_DISTANCE = 6.0
++# Tighter standstill gap than upstream (6.0 m): the car closes up on a stopped lead and
++# pulls away sooner once that lead moves (see drive_mode.launch_boost).
++STOP_DISTANCE = 4.0
  MIN_X_LEAD_FACTOR = 0.5
  
 -def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
+-  if personality==log.LongitudinalPersonality.relaxed:
+-    return 1.0
+-  elif personality==log.LongitudinalPersonality.standard:
+-    return 1.0
+-  elif personality==log.LongitudinalPersonality.aggressive:
+-    return 0.5
+-  else:
 +def get_jerk_factor(personality=log.LongitudinalPersonality.standard, drive_mode_profile=None):
-   if personality not in (log.LongitudinalPersonality.relaxed,
-                          log.LongitudinalPersonality.standard,
-                          log.LongitudinalPersonality.aggressive):
++  if personality not in (log.LongitudinalPersonality.relaxed,
++                         log.LongitudinalPersonality.standard,
++                         log.LongitudinalPersonality.aggressive):
      raise NotImplementedError("Longitudinal personality not supported")
  
--  # eco / normal / sport jerk scaling (see drive_mode.py)
 +  # personality sets the baseline, the separate eco/normal/sport drive mode scales it
-   base = 0.5 if personality==log.LongitudinalPersonality.aggressive else 1.0
--  return base * drive_mode.get_jerk_scale(personality)
++  base = 0.5 if personality==log.LongitudinalPersonality.aggressive else 1.0
 +  return base * drive_mode.get_jerk_scale(drive_mode_profile)
- 
++
  
  def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
--  if personality not in (log.LongitudinalPersonality.relaxed,
--                         log.LongitudinalPersonality.standard,
--                         log.LongitudinalPersonality.aggressive):
+-  if personality==log.LongitudinalPersonality.relaxed:
+-    return 1.75
+-  elif personality==log.LongitudinalPersonality.standard:
+-    return 1.45
+-  elif personality==log.LongitudinalPersonality.aggressive:
+-    return 1.25
+-  else:
 -    raise NotImplementedError("Longitudinal personality not supported")
--
--  # eco / normal / sport following times, all tighter than upstream and floored at
--  # drive_mode.MIN_T_FOLLOW
 +  # Following time belongs to the driving personality (relaxed / standard / aggressive),
 +  # not to the eco / normal / sport drive mode. See drive_mode.py.
-   return drive_mode.get_t_follow(personality)
++  return drive_mode.get_t_follow(personality)
  
  def get_stopped_equivalence_factor(v_lead):
-@@ -264,8 +259,8 @@ class LongitudinalMpc:
+   return (v_lead**2) / (2 * COMFORT_BRAKE)
+@@ -261,8 +259,8 @@ class LongitudinalMpc:
      for i in range(N):
        self.solver.cost_set(i, 'Zl', Zl)
  
@@ -44,52 +79,61 @@ index c6cbddda0d..20e9ed2210 100755
      a_change_cost = A_CHANGE_COST if prev_accel_constraint else 0
      cost_weights = [X_EGO_OBSTACLE_COST, X_EGO_COST, V_EGO_COST, A_EGO_COST, jerk_factor * a_change_cost, jerk_factor * J_EGO_COST]
      constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, DANGER_ZONE_COST]
-@@ -310,14 +305,14 @@ class LongitudinalMpc:
+@@ -307,7 +305,14 @@ class LongitudinalMpc:
      lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
      return lead_xv
  
--  def launch_accel_boost(self, radarstate, personality):
-+  def launch_accel_boost(self, radarstate, drive_mode_profile):
-     """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
-     lead = radarstate.leadOne
-     if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
--      return drive_mode.get_launch_boost(personality)
-+      return drive_mode.get_launch_boost(drive_mode_profile)
-     return 0.0
- 
 -  def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
++  def launch_accel_boost(self, radarstate, drive_mode_profile):
++    """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
++    lead = radarstate.leadOne
++    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
++      return drive_mode.get_launch_boost(drive_mode_profile)
++    return 0.0
++
 +  def update(self, radarstate, personality=log.LongitudinalPersonality.standard, drive_mode_profile=None):
      t_follow = get_T_FOLLOW(personality)
  
      lead_xv_0 = self.process_lead(radarstate.leadOne)
-@@ -339,7 +334,7 @@ class LongitudinalMpc:
+@@ -328,7 +333,8 @@ class LongitudinalMpc:
+     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
  
      self.params[:,0] = ACCEL_MIN
-     # eco / normal / sport accel limit, plus launch headroom while pulling away from a stop
--    self.params[:,1] = ACCEL_MAX * drive_mode.get_accel_scale(personality) + self.launch_accel_boost(radarstate, personality)
+-    self.params[:,1] = ACCEL_MAX
++    # eco / normal / sport accel limit, plus launch headroom while pulling away from a stop
 +    self.params[:,1] = ACCEL_MAX * drive_mode.get_accel_scale(drive_mode_profile) + self.launch_accel_boost(radarstate, drive_mode_profile)
      self.params[:,2] = np.min(x_obstacles, axis=1)
      self.params[:,3] = np.copy(self.a_prev)
      self.params[:,4] = t_follow
 diff --git a/openpilot/selfdrive/controls/lib/longitudinal_planner.py b/openpilot/selfdrive/controls/lib/longitudinal_planner.py
-index 910266c9f5..be18aecc4d 100755
+index 87f62fbe95..be18aecc4d 100755
 --- a/openpilot/selfdrive/controls/lib/longitudinal_planner.py
 +++ b/openpilot/selfdrive/controls/lib/longitudinal_planner.py
-@@ -25,9 +25,10 @@ A_CRUISE_MIN = -0.5
+@@ -14,7 +14,9 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
+ from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
+ from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
+ from openpilot.common.swaglog import cloudlog
++from openpilot.cereal import log
+ 
++from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
+ from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
+ 
+ J_CRUISE_VALS = [1.6, 1.2, 0.8, 0.6]
+@@ -23,8 +25,11 @@ A_CRUISE_MIN = -0.5
  CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
  
  
--def get_cruise_accel(v_cruise, v_ego, a_cruise_prev, dt, personality=log.LongitudinalPersonality.standard):
--  # eco / normal / sport scaling: the selected drive mode sets how hard the car pulls
--  max_accel = ACCEL_MAX * drive_mode.get_accel_scale(personality)
+-def get_cruise_accel(v_cruise, v_ego, a_cruise_prev, dt):
+-  target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, ACCEL_MAX)
 +def get_cruise_accel(v_cruise, v_ego, a_cruise_prev, dt, drive_mode_profile=None):
 +  # eco / normal / sport drive mode sets how hard the car pulls; the following gap is
 +  # a separate (personality) axis and is not scaled here
 +  max_accel = ACCEL_MAX * drive_mode.get_accel_scale(drive_mode_profile)
-   target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, max_accel)
++  target_accel = np.clip(v_cruise - v_ego, A_CRUISE_MIN, max_accel)
    j_cruise = np.interp(v_ego, J_CRUISE_BP, J_CRUISE_VALS)
    target_accel = float(np.clip(target_accel, a_cruise_prev - j_cruise * dt, a_cruise_prev + j_cruise * dt))
-@@ -43,6 +44,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
+ 
+@@ -39,6 +44,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
      self.fcw = False
      self.dt = dt
      self.accel_boost = AccelBoost()
@@ -97,7 +141,7 @@ index 910266c9f5..be18aecc4d 100755
  
      self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
      self.a_cruise = init_a
-@@ -62,6 +64,9 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
+@@ -58,6 +64,9 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
      if sm['controlsState'].forceDecel:
        v_cruise = 0.0
  
@@ -107,7 +151,7 @@ index 910266c9f5..be18aecc4d 100755
      long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
  
      # Reset current state when not engaged, or user is controlling the speed
-@@ -84,12 +89,12 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
+@@ -80,12 +89,12 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
      # Get new v_cruise and a_target from Smart Cruise Control and Speed Limit Assist
      v_cruise, self.output_a_target = LongitudinalPlannerSP.update_targets(self, sm, self.v_desired_filter.x, self.output_a_target, v_cruise)
  
@@ -122,76 +166,155 @@ index 910266c9f5..be18aecc4d 100755
  
      self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
      self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
-@@ -111,7 +116,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
+@@ -106,7 +115,8 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
+     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
      output_should_stop_e2e = sm['modelV2'].action.shouldStop
  
-     self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.dt,
--                                     personality=sm['selfdriveState'].personality)
+-    self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.dt)
++    self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.dt,
 +                                     drive_mode_profile=drive_mode_profile)
      cruise_should_stop = should_stop(v_ego, self.a_cruise)
  
      output_a_target_e2e = self.accel_boost.update(sm, output_a_target_e2e, output_a_target_mpc, self.a_cruise)
-diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
-index 74c3739294..860f47d41a 100644
---- a/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
-+++ b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
-@@ -1,26 +1,28 @@
- """
--Drive-mode profiles (eco / normal / sport) for sunnypilot longitudinal control.
-+Two independent longitudinal axes for sunnypilot.
+diff --git a/openpilot/selfdrive/ui/layouts/settings/toggles.py b/openpilot/selfdrive/ui/layouts/settings/toggles.py
+index ccc496adb5..4a3f8fea25 100644
+--- a/openpilot/selfdrive/ui/layouts/settings/toggles.py
++++ b/openpilot/selfdrive/ui/layouts/settings/toggles.py
+@@ -23,6 +23,10 @@ DESCRIPTIONS = {
+     "Your attention is required at all times to use this feature."
+   ),
+   "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage sunnypilot."),
++  "DriveModeProfile": tr_noop(
++    "Eco accelerates gently and stays comfortable. Normal is a middle ground. Sport uses the car's full acceleration " +
++    "when pulling away and closing a gap. This is separate from following distance, so any combination works."
++  ),
+   "LongitudinalPersonality": tr_noop(
+     "Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. " +
+     "In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
+@@ -100,6 +104,16 @@ class TogglesLayout(Widget):
+       icon="speed_limit.png"
+     )
  
--sunnypilot exposes one three-way longitudinal selector to the driver: Driving
--Personality (relaxed / standard / aggressive). It is settable from the device UI, from
--Sunnylink, and from the car's own ACC distance button, so it is the natural place to
--hang a drive-mode abstraction:
++    self._drive_mode_setting = multiple_button_item(
++      lambda: tr("Drive Mode"),
++      lambda: tr(DESCRIPTIONS["DriveModeProfile"]),
++      buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
++      button_width=300,
++      callback=self._set_drive_mode,
++      selected_index=self._params.get("DriveModeProfile", return_default=True),
++      icon="speed_limit.png"
++    )
++
+     self._toggles = {}
+     self._initial_cruise_speed = ListItem(
+       title=lambda: tr("Initial Max Speed"),
+@@ -140,6 +154,7 @@ class TogglesLayout(Widget):
+       # insert longitudinal personality after NDOG toggle
+       if param == "DisengageOnAccelerator":
+         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
++        self._toggles["DriveModeProfile"] = self._drive_mode_setting
+         self._toggles["InitialCruiseSpeedKph"] = self._initial_cruise_speed
+ 
+     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
+@@ -164,6 +179,7 @@ class TogglesLayout(Widget):
+ 
+     if ui_state.CP is not None:
+       self._long_personality_setting.action_item.set_enabled(ui_state.has_longitudinal_control)
++      self._drive_mode_setting.action_item.set_enabled(ui_state.has_longitudinal_control)
+ 
+     # TODO: make a param control list item so we don't need to manage internal state as much here
+     # refresh toggles from params to mirror external changes
+@@ -188,3 +204,6 @@ class TogglesLayout(Widget):
+ 
+   def _set_longitudinal_personality(self, button_index: int):
+     self._params.put("LongitudinalPersonality", button_index, block=True)
++
++  def _set_drive_mode(self, button_index: int):
++    self._params.put("DriveModeProfile", button_index, block=True)
+diff --git a/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py b/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
+index 406e0a77d1..52ccaf58aa 100644
+--- a/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
++++ b/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
+@@ -19,6 +19,10 @@ class TogglesLayoutMici(NavScroller):
+                                                                "Aggressive follows closer, with firmer gas and braking.\n" +
+                                                                "Relaxed leaves more space.\n" +
+                                                                "Use the steering wheel distance button on supported cars.")
++    self._drive_mode_toggle = BigMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
++                                                  description="Eco accelerates gently and stays comfortable.\n" +
++                                                              "Sport uses the car's full acceleration.\n" +
++                                                              "Following distance is a separate setting above.")
+     self._initial_cruise_speed = InitialCruiseSpeedButton()
+     self._initial_cruise_speed.set_visible(lambda: ui_state.CP is not None and ui_state.has_longitudinal_control and not ui_state.CP.pcmCruise)
+     is_metric_toggle = BigToggle("use metric units", initial_state=ui_state.params.get_bool("IsMetric"), toggle_callback=self._on_metric_toggle)
+@@ -40,6 +44,7 @@ class TogglesLayoutMici(NavScroller):
+ 
+     self._scroller.add_widgets([
+       self._personality_toggle,
++      self._drive_mode_toggle,
+       self._initial_cruise_speed,
+       is_metric_toggle,
+       ldw_toggle,
+@@ -92,6 +97,7 @@ class TogglesLayoutMici(NavScroller):
+ 
+     if ui_state.CP is not None:
+       self._personality_toggle.set_visible(ui_state.has_longitudinal_control)
++      self._drive_mode_toggle.set_visible(ui_state.has_longitudinal_control)
+ 
+     # Refresh toggles from params to mirror external changes
+     for key, item in self._refresh_toggles:
+diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
+new file mode 100644
+index 0000000000..d5585cf99b
+--- /dev/null
++++ b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
+@@ -0,0 +1,154 @@
++"""
++Two independent longitudinal axes for sunnypilot.
++
 +1. Driving Personality (relaxed / standard / aggressive)
 +   How close the car follows and how eagerly it closes a gap. This is the existing
 +   sunnypilot selector (device UI, Sunnylink, and the car's own ACC distance button) and
 +   keeps its meaning: personality decides the following time.
- 
--  relaxed    -> eco     gentle launch, moderate gap, smoother jerk
--  standard   -> normal  the default behaviour
--  aggressive -> sport   sharp launch, tightest gap, sharper jerk
++
 +2. Drive mode (eco / normal / sport)
 +   How hard the car accelerates once it decides to. Selected with the DriveModeProfile
 +   param (0 = eco, 1 = normal, 2 = sport) and read live so it can be changed while
 +   driving. Drive mode does NOT change the following gap.
- 
--Two behaviours beyond the upstream personality table:
++   Eco is the default (FrogPilot ships Sport as its default acceleration profile; this
++   fork deliberately starts gentle and lets you opt into normal/sport).
++
 +They are deliberately separate: relaxed + sport (hang back, but pull hard when the gap
 +opens) and aggressive + eco (sit close, accelerate gently) are both valid combinations.
- 
--* Following time is reduced in all three modes (upstream: 1.75 / 1.45 / 1.25 s), with a
--  hard safety floor so no setting can command a gap tighter than MIN_T_FOLLOW.
--* ``launch_boost`` is added to the MPC acceleration limit while pulling away from a
--  standstill behind a lead that has actually started moving, so the car reacts when the
--  gap opens instead of waiting for the solver to converge on its own.
++
 +Following times are reduced from upstream (1.75 / 1.45 / 1.25 s) but keep their relative
 +order, with a hard safety floor so no setting can command a tighter gap than
 +MIN_T_FOLLOW.
- """
- 
++"""
++
 +import time
 +
- # cereal needs capnp, which is not available in lightweight unit-test environments.
--# The personalities are a plain 0/1/2 enum, so fall back to those values.
++# cereal needs capnp, which is not available in lightweight unit-test environments.
 +# Both selectors are plain 0/1/2 enums, so fall back to those values.
- try:  # pragma: no cover - depends on the runtime environment
-   from openpilot.cereal import log
- 
-@@ -30,62 +32,118 @@ try:  # pragma: no cover - depends on the runtime environment
- except Exception:  # pragma: no cover
-   RELAXED, STANDARD, AGGRESSIVE = 0, 1, 2
- 
--# Never command a following gap tighter than this, whatever the mode says.
++try:  # pragma: no cover - depends on the runtime environment
++  from openpilot.cereal import log
++
++  RELAXED = log.LongitudinalPersonality.relaxed
++  STANDARD = log.LongitudinalPersonality.standard
++  AGGRESSIVE = log.LongitudinalPersonality.aggressive
++except Exception:  # pragma: no cover
++  RELAXED, STANDARD, AGGRESSIVE = 0, 1, 2
++
 +ECO, NORMAL, SPORT = 0, 1, 2
 +
 +# Drive mode is selected through this param so it can change without a rebuild.
 +DRIVE_MODE_PARAM = "DriveModeProfile"
 +
++# Used when the param is unset, unreadable or unrecognised: start gentle.
++DEFAULT_DRIVE_MODE = ECO
++
 +# Never command a following gap tighter than this, whatever the personality says.
- MIN_T_FOLLOW = 0.9
- 
++MIN_T_FOLLOW = 0.9
++
 +# Personality (following) table: upstream is 1.75 / 1.45 / 1.25 s.
 +PERSONALITY_T_FOLLOW = {
 +  RELAXED: 1.40,
@@ -204,89 +327,65 @@ index 74c3739294..860f47d41a 100644
 +  AGGRESSIVE: 1.25,
 +}
 +
- # Launch detection thresholds while stopped behind a lead.
- LAUNCH_EGO_SPEED = 1.0    # m/s - ego is still (essentially) stopped below this
- LAUNCH_LEAD_SPEED = 0.3   # m/s - lead counts as moving above this
- 
--# Upstream personality following times, kept so the tests can assert we stay tighter.
--UPSTREAM_T_FOLLOW = {RELAXED: 1.75, STANDARD: 1.45, AGGRESSIVE: 1.25}
--
- 
- class DriveModeProfile:
--  """Longitudinal behaviour for a single drive mode."""
++# Launch detection thresholds while stopped behind a lead.
++LAUNCH_EGO_SPEED = 1.0    # m/s - ego is still (essentially) stopped below this
++LAUNCH_LEAD_SPEED = 0.3   # m/s - lead counts as moving above this
++
++
++class DriveModeProfile:
 +  """Acceleration behaviour for one drive mode. Following distance is not here."""
- 
--  def __init__(self, name: str, t_follow: float, accel_scale: float, jerk_scale: float, launch_boost: float):
++
 +  def __init__(self, name: str, accel_scale: float, jerk_scale: float, launch_boost: float):
-     self.name = name
--    self.t_follow = max(t_follow, MIN_T_FOLLOW)
-     self.accel_scale = accel_scale
-     self.jerk_scale = jerk_scale
-     self.launch_boost = launch_boost
- 
-   def __repr__(self) -> str:
--    return (f"DriveModeProfile({self.name!r}, t_follow={self.t_follow}, "
--            f"accel_scale={self.accel_scale}, jerk_scale={self.jerk_scale}, launch_boost={self.launch_boost})")
++    self.name = name
++    self.accel_scale = accel_scale
++    self.jerk_scale = jerk_scale
++    self.launch_boost = launch_boost
++
++  def __repr__(self) -> str:
 +    return (f"DriveModeProfile({self.name!r}, accel_scale={self.accel_scale}, "
 +            f"jerk_scale={self.jerk_scale}, launch_boost={self.launch_boost})")
- 
- 
--# accel_scale multiplies the vehicle's ACCEL_MAX, so 1.0 is "everything the car can do"
--# (sport). Jerk scale is a cost multiplier: higher = smoother, lower = sharper.
--PROFILES = {
--  RELAXED: DriveModeProfile("eco", t_follow=1.40, accel_scale=0.70, jerk_scale=1.50, launch_boost=0.20),
--  STANDARD: DriveModeProfile("normal", t_follow=1.10, accel_scale=0.90, jerk_scale=1.00, launch_boost=0.40),
--  AGGRESSIVE: DriveModeProfile("sport", t_follow=0.90, accel_scale=1.00, jerk_scale=0.60, launch_boost=0.60),
++
++
 +# accel_scale multiplies the vehicle's ACCEL_MAX, so 1.0 is everything the car can do
 +# (sport). jerk_scale is a cost multiplier: higher = smoother, lower = sharper.
 +DRIVE_MODES = {
 +  ECO: DriveModeProfile("eco", accel_scale=0.70, jerk_scale=1.50, launch_boost=0.20),
 +  NORMAL: DriveModeProfile("normal", accel_scale=0.90, jerk_scale=1.00, launch_boost=0.40),
 +  SPORT: DriveModeProfile("sport", accel_scale=1.00, jerk_scale=0.60, launch_boost=0.60),
- }
- 
- 
--def get_profile(personality) -> DriveModeProfile:
--  """Profile for a personality value. Unknown values fall back to normal."""
--  return PROFILES.get(personality, PROFILES[STANDARD])
++}
++
++
 +def _check_personality(personality) -> None:
 +  if personality not in (RELAXED, STANDARD, AGGRESSIVE):
 +    raise NotImplementedError("Longitudinal personality not supported")
- 
- 
- def get_t_follow(personality) -> float:
--  return get_profile(personality).t_follow
++
++
++def get_t_follow(personality) -> float:
 +  """Following time for a driving personality. This is the gap axis."""
 +  _check_personality(personality)
 +  return max(PERSONALITY_T_FOLLOW[personality], MIN_T_FOLLOW)
 +
 +
 +def get_profile(drive_mode) -> DriveModeProfile:
-+  """Acceleration profile for a drive mode. Unknown values fall back to normal."""
-+  return DRIVE_MODES.get(drive_mode, DRIVE_MODES[NORMAL])
- 
- 
--def get_accel_scale(personality) -> float:
--  return get_profile(personality).accel_scale
++  """Acceleration profile for a drive mode. Unknown values fall back to the default."""
++  return DRIVE_MODES.get(drive_mode, DRIVE_MODES[DEFAULT_DRIVE_MODE])
++
++
 +def get_accel_scale(drive_mode) -> float:
 +  return get_profile(drive_mode).accel_scale
- 
- 
--def get_jerk_scale(personality) -> float:
--  return get_profile(personality).jerk_scale
++
++
 +def get_jerk_scale(drive_mode) -> float:
 +  return get_profile(drive_mode).jerk_scale
- 
- 
--def get_launch_boost(personality) -> float:
--  return get_profile(personality).launch_boost
++
++
 +def get_launch_boost(drive_mode) -> float:
 +  return get_profile(drive_mode).launch_boost
- 
- 
- def is_launching(v_ego: float, v_lead: float, lead_present: bool) -> bool:
-   """True while pulling away from a stop behind a lead that has started moving."""
-   return bool(lead_present and v_ego < LAUNCH_EGO_SPEED and v_lead > LAUNCH_LEAD_SPEED)
++
++
++def is_launching(v_ego: float, v_lead: float, lead_present: bool) -> bool:
++  """True while pulling away from a stop behind a lead that has started moving."""
++  return bool(lead_present and v_ego < LAUNCH_EGO_SPEED and v_lead > LAUNCH_LEAD_SPEED)
 +
 +
 +class DriveModeSelector:
@@ -301,7 +400,7 @@ index 74c3739294..860f47d41a 100644
 +    self._params = params
 +    self._clock = clock
 +    self._last_read = float("-inf")
-+    self._drive_mode = NORMAL
++    self._drive_mode = DEFAULT_DRIVE_MODE
 +
 +  @property
 +  def drive_mode(self) -> int:
@@ -313,58 +412,46 @@ index 74c3739294..860f47d41a 100644
 +      self._last_read = now
 +      try:
 +        raw = self._params.get(DRIVE_MODE_PARAM)
-+        self._drive_mode = int(raw) if raw not in (None, "") else NORMAL
++        self._drive_mode = int(raw) if raw not in (None, "") else DEFAULT_DRIVE_MODE
 +      except Exception:
-+        self._drive_mode = NORMAL
++        self._drive_mode = DEFAULT_DRIVE_MODE
 +      if self._drive_mode not in DRIVE_MODES:
-+        self._drive_mode = NORMAL
++        self._drive_mode = DEFAULT_DRIVE_MODE
 +    return self._drive_mode
 +
 +  @property
 +  def profile(self) -> DriveModeProfile:
 +    return get_profile(self._drive_mode)
 diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py b/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
-index aa124ca1a6..420ab257fd 100644
---- a/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
+new file mode 100644
+index 0000000000..207f6ee829
+--- /dev/null
 +++ b/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
-@@ -1,55 +1,120 @@
+@@ -0,0 +1,141 @@
 +import itertools
- import unittest
- 
- from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
- 
- 
--class TestDriveModeProfiles(unittest.TestCase):
--  def test_three_modes_are_named_eco_normal_sport(self):
--    names = set()
--    for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
--      names.add(drive_mode.get_profile(personality).name)
--    self.assertEqual(names, {"eco", "normal", "sport"})
++import unittest
++
++from openpilot.sunnypilot.selfdrive.controls.lib import drive_mode
++
++
 +class TestPersonalityFollowingGap(unittest.TestCase):
 +  """Personality (relaxed/standard/aggressive) owns the following distance."""
- 
--  def test_following_time_tightens_with_mode(self):
--    eco = drive_mode.get_t_follow(drive_mode.RELAXED)
--    normal = drive_mode.get_t_follow(drive_mode.STANDARD)
--    sport = drive_mode.get_t_follow(drive_mode.AGGRESSIVE)
--    self.assertGreater(eco, normal)
--    self.assertGreater(normal, sport)
++
 +  def test_following_time_tightens_with_personality(self):
 +    relaxed = drive_mode.get_t_follow(drive_mode.RELAXED)
 +    standard = drive_mode.get_t_follow(drive_mode.STANDARD)
 +    aggressive = drive_mode.get_t_follow(drive_mode.AGGRESSIVE)
 +    self.assertGreater(relaxed, standard)
 +    self.assertGreater(standard, aggressive)
- 
-   def test_following_time_never_goes_below_the_floor(self):
-     for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
-       self.assertGreaterEqual(drive_mode.get_t_follow(personality), drive_mode.MIN_T_FOLLOW)
- 
--  def test_every_mode_is_tighter_than_the_upstream_personality_table(self):
++
++  def test_following_time_never_goes_below_the_floor(self):
++    for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
++      self.assertGreaterEqual(drive_mode.get_t_follow(personality), drive_mode.MIN_T_FOLLOW)
++
 +  def test_every_personality_is_tighter_than_upstream(self):
-     for personality, upstream in drive_mode.UPSTREAM_T_FOLLOW.items():
-       self.assertLess(drive_mode.get_t_follow(personality), upstream)
- 
++    for personality, upstream in drive_mode.UPSTREAM_T_FOLLOW.items():
++      self.assertLess(drive_mode.get_t_follow(personality), upstream)
++
 +  def test_unknown_personality_raises(self):
 +    with self.assertRaises(NotImplementedError):
 +      drive_mode.get_t_follow(99)
@@ -377,41 +464,36 @@ index aa124ca1a6..420ab257fd 100644
 +    names = {drive_mode.get_profile(m).name for m in (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT)}
 +    self.assertEqual(names, {"eco", "normal", "sport"})
 +
-   def test_acceleration_scales_up_with_mode(self):
--    eco = drive_mode.get_accel_scale(drive_mode.RELAXED)
--    normal = drive_mode.get_accel_scale(drive_mode.STANDARD)
--    sport = drive_mode.get_accel_scale(drive_mode.AGGRESSIVE)
++  def test_acceleration_scales_up_with_mode(self):
 +    eco = drive_mode.get_accel_scale(drive_mode.ECO)
 +    normal = drive_mode.get_accel_scale(drive_mode.NORMAL)
 +    sport = drive_mode.get_accel_scale(drive_mode.SPORT)
-     self.assertLess(eco, normal)
-     self.assertLess(normal, sport)
- 
-   def test_accel_scale_never_exceeds_vehicle_limit(self):
--    for personality in (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE):
--      self.assertLessEqual(drive_mode.get_accel_scale(personality), 1.0)
++    self.assertLess(eco, normal)
++    self.assertLess(normal, sport)
++
++  def test_accel_scale_never_exceeds_vehicle_limit(self):
 +    for mode in (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT):
 +      self.assertLessEqual(drive_mode.get_accel_scale(mode), 1.0)
- 
-   def test_eco_jerk_is_softer_than_sport(self):
--    self.assertGreater(drive_mode.get_jerk_scale(drive_mode.RELAXED),
--                       drive_mode.get_jerk_scale(drive_mode.AGGRESSIVE))
++
++  def test_eco_jerk_is_softer_than_sport(self):
 +    self.assertGreater(drive_mode.get_jerk_scale(drive_mode.ECO),
 +                       drive_mode.get_jerk_scale(drive_mode.SPORT))
- 
-   def test_launch_boost_is_present_and_ordered(self):
--    boosts = [drive_mode.get_launch_boost(p) for p in
--              (drive_mode.RELAXED, drive_mode.STANDARD, drive_mode.AGGRESSIVE)]
++
++  def test_launch_boost_is_present_and_ordered(self):
 +    boosts = [drive_mode.get_launch_boost(m) for m in
 +              (drive_mode.ECO, drive_mode.NORMAL, drive_mode.SPORT)]
-     self.assertTrue(all(b > 0.0 for b in boosts))
-     self.assertEqual(boosts, sorted(boosts))
- 
--  def test_unknown_personality_falls_back_to_normal(self):
-+  def test_unknown_drive_mode_falls_back_to_normal(self):
-     self.assertEqual(drive_mode.get_profile(99).name, "normal")
- 
- 
++    self.assertTrue(all(b > 0.0 for b in boosts))
++    self.assertEqual(boosts, sorted(boosts))
++
++  def test_default_mode_is_eco(self):
++    self.assertEqual(drive_mode.DEFAULT_DRIVE_MODE, drive_mode.ECO)
++    self.assertEqual(drive_mode.get_profile(drive_mode.DEFAULT_DRIVE_MODE).name, "eco")
++
++  def test_unknown_drive_mode_falls_back_to_the_default(self):
++    self.assertEqual(drive_mode.get_profile(99).name, "eco")
++    self.assertEqual(drive_mode.get_accel_scale(99), drive_mode.get_accel_scale(drive_mode.ECO))
++
++
 +class TestAxesAreIndependent(unittest.TestCase):
 +  def test_drive_mode_never_changes_the_following_gap(self):
 +    # every personality/drive-mode combination keeps the gap set by personality alone
@@ -439,17 +521,17 @@ index aa124ca1a6..420ab257fd 100644
 +        raise self.value
 +      return self.value
 +
-+  def test_reads_param_and_defaults_to_normal(self):
-+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(None)).update(), drive_mode.NORMAL)
++  def test_reads_param_and_defaults_to_eco(self):
++    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(None)).update(), drive_mode.ECO)
 +    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(2)).update(), drive_mode.SPORT)
 +
-+  def test_invalid_value_falls_back_to_normal(self):
-+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams("garbage")).update(), drive_mode.NORMAL)
-+    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(7)).update(), drive_mode.NORMAL)
++  def test_invalid_value_falls_back_to_eco(self):
++    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams("garbage")).update(), drive_mode.ECO)
++    self.assertEqual(drive_mode.DriveModeSelector(self.FakeParams(7)).update(), drive_mode.ECO)
 +
-+  def test_param_errors_fall_back_to_normal(self):
++  def test_param_errors_fall_back_to_eco(self):
 +    selector = drive_mode.DriveModeSelector(self.FakeParams(ValueError("boom")))
-+    self.assertEqual(selector.update(), drive_mode.NORMAL)
++    self.assertEqual(selector.update(), drive_mode.ECO)
 +
 +  def test_value_refreshes_after_the_interval(self):
 +    now = [0.0]
@@ -468,6 +550,102 @@ index aa124ca1a6..420ab257fd 100644
 +    self.assertEqual(selector.profile.name, "sport")
 +
 +
- class TestLaunchDetection(unittest.TestCase):
-   def test_stopped_ego_behind_moving_lead_is_launching(self):
-     self.assertTrue(drive_mode.is_launching(v_ego=0.0, v_lead=1.5, lead_present=True))
++class TestLaunchDetection(unittest.TestCase):
++  def test_stopped_ego_behind_moving_lead_is_launching(self):
++    self.assertTrue(drive_mode.is_launching(v_ego=0.0, v_lead=1.5, lead_present=True))
++
++  def test_stopped_ego_behind_stopped_lead_is_not_launching(self):
++    self.assertFalse(drive_mode.is_launching(v_ego=0.0, v_lead=0.0, lead_present=True))
++
++  def test_moving_ego_is_not_launching(self):
++    self.assertFalse(drive_mode.is_launching(v_ego=12.0, v_lead=14.0, lead_present=True))
++
++  def test_no_lead_is_not_launching(self):
++    self.assertFalse(drive_mode.is_launching(v_ego=0.0, v_lead=5.0, lead_present=False))
++
++  def test_lead_creeping_below_threshold_is_not_launching(self):
++    self.assertFalse(drive_mode.is_launching(v_ego=0.0, v_lead=0.2, lead_present=True))
++
++
++if __name__ == "__main__":
++  unittest.main()
+diff --git a/openpilot/sunnypilot/sunnylink/settings_ui.json b/openpilot/sunnypilot/sunnylink/settings_ui.json
+index 215331dde1..0fe79eb927 100644
+--- a/openpilot/sunnypilot/sunnylink/settings_ui.json
++++ b/openpilot/sunnypilot/sunnylink/settings_ui.json
+@@ -620,6 +620,33 @@
+                 }
+               ]
+             },
++            {
++              "key": "DriveModeProfile",
++              "widget": "multiple_button",
++              "title": "Drive Mode",
++              "description": "Eco accelerates gently and stays comfortable. Normal is a middle ground. Sport uses the car's full acceleration when pulling away and closing a gap. This is independent of driving personality, so any combination works.",
++              "options": [
++                {
++                  "value": 0,
++                  "label": "Eco"
++                },
++                {
++                  "value": 1,
++                  "label": "Normal"
++                },
++                {
++                  "value": 2,
++                  "label": "Sport"
++                }
++              ],
++              "enablement": [
++                {
++                  "type": "capability",
++                  "field": "has_longitudinal_control",
++                  "equals": true
++                }
++              ]
++            },
+             {
+               "key": "IntelligentCruiseButtonManagement",
+               "widget": "toggle",
+diff --git a/openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml b/openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml
+index 39d6fbffd4..090d5d401c 100644
+--- a/openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml
++++ b/openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml
+@@ -30,6 +30,20 @@ sections:
+       label: Relaxed
+     enablement:
+     - $ref: '#/macros/longitudinal'
++  - key: DriveModeProfile
++    widget: multiple_button
++    title: Drive Mode
++    description: Eco accelerates gently and stays comfortable. Normal is a middle ground. Sport uses the car's full acceleration
++      when pulling away and closing a gap. This is independent of driving personality, so any combination works.
++    options:
++    - value: 0
++      label: Eco
++    - value: 1
++      label: Normal
++    - value: 2
++      label: Sport
++    enablement:
++    - $ref: '#/macros/longitudinal'
+   - key: IntelligentCruiseButtonManagement
+     widget: toggle
+     title: Intelligent Cruise Button Management (ICBM) (Alpha)
+diff --git a/openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py b/openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py
+index 5a31e2afea..3f635e43d1 100644
+--- a/openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py
++++ b/openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py
+@@ -356,3 +356,12 @@ class TestItemCompleteness(OpenpilotTestCase):
+     assert lp is not None
+     assert "options" in lp
+     assert len(lp["options"]) == 3
++
++  def test_drive_mode_has_eco_normal_sport(self, schema):
++    """DriveModeProfile is its own axis (acceleration), separate from personality (gap)."""
++    cruise = next(p for p in schema["panels"] if p["id"] == "cruise")
++    dm = next((i for i in _iter_panel_items(cruise) if i["key"] == "DriveModeProfile"), None)
++    assert dm is not None
++    assert dm["widget"] == "multiple_button"
++    assert [o["label"] for o in dm["options"]] == ["Eco", "Normal", "Sport"]
++    assert [o["value"] for o in dm["options"]] == [0, 1, 2]
