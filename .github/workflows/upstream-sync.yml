@@ -54,6 +54,27 @@ jobs:
             WORKFLOW_BACKUP="$RUNNER_TEMP/upstream-sync.yml"
             cp .github/workflows/upstream-sync.yml "$WORKFLOW_BACKUP"
 
+            # Stash the custom tuning files as well. The tree replacement below drops
+            # them, and the patch replay further down needs a fallback for the case
+            # where upstream moved and the stored patch no longer applies.
+            CUSTOM_PATHS=(
+              openpilot/common/params_keys.h
+              openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
+              openpilot/selfdrive/controls/lib/longitudinal_planner.py
+              openpilot/selfdrive/ui/layouts/settings/toggles.py
+              openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
+              openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
+              openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
+              openpilot/sunnypilot/sunnylink/settings_ui.json
+              openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml
+              openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py
+            )
+            mkdir -p "$RUNNER_TEMP/custom"
+            for p in "${CUSTOM_PATHS[@]}"; do
+              mkdir -p "$RUNNER_TEMP/custom/$(dirname "$p")"
+              cp "$p" "$RUNNER_TEMP/custom/$p"
+            done
+
             # Use ours only to create a merge commit with both histories as parents.
             # The tree is then replaced with upstream plus the custom safeguards below,
             # so future normal updates remain fast-forwardable.
@@ -104,13 +125,20 @@ jobs:
             # rewrites that branch). Failing here is deliberate: silently shipping a build
             # without the tuning would look like the feature simply stopped working.
             rm -f /tmp/drive-mode.patch
-            if git fetch --depth=1 origin tuning && git show FETCH_HEAD:patches/drive-mode.patch > /tmp/drive-mode.patch; then
-              git apply /tmp/drive-mode.patch \
-                || { echo "::error::drive-mode patch does not apply to the new upstream tree; refresh patches/drive-mode.patch on the tuning branch"; exit 1; }
+            if git fetch --depth=1 origin tuning \
+               && git show FETCH_HEAD:patches/drive-mode.patch > /tmp/drive-mode.patch \
+               && git apply /tmp/drive-mode.patch; then
               echo "Re-applied drive-mode tuning patch."
             else
-              echo "::error::cannot read patches/drive-mode.patch from origin/tuning"
-              exit 1
+              # Upstream moved and the stored patch no longer applies. Restoring our exact
+              # files keeps the tuning (a build without it looks like the feature simply
+              # stopped working, and plannerd/UI crash fixes are part of it). Refresh
+              # patches/drive-mode.patch on the tuning branch to get back to minimal edits.
+              echo "::warning::drive-mode patch did not apply; restoring custom files verbatim. Refresh patches/drive-mode.patch on tuning."
+              for p in "${CUSTOM_PATHS[@]}"; do
+                mkdir -p "$(dirname "$p")"
+                cp "$RUNNER_TEMP/custom/$p" "$p"
+              done
             fi
 
             mkdir -p .github/workflows
