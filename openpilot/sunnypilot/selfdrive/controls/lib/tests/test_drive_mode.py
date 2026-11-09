@@ -137,5 +137,35 @@ class TestLaunchDetection(unittest.TestCase):
     self.assertFalse(drive_mode.is_launching(v_ego=0.0, v_lead=0.2, lead_present=True))
 
 
+class TestStaleBinaryTolerance(unittest.TestCase):
+  """The device's prebuilt libparams_c.so can lag params_keys.h and raise UnknownKeyName."""
+
+  class RaisingParams:
+    def __init__(self):
+      self.put_calls = []
+
+    def get(self, key, *args, **kwargs):
+      raise KeyError("UnknownKeyName")
+
+    def put(self, key, value, *args, **kwargs):
+      self.put_calls.append((key, value))
+      raise KeyError("UnknownKeyName")
+
+  class StringParams:
+    def get(self, key, *args, **kwargs):
+      return "2"
+
+  def test_read_falls_back_to_default_when_backend_raises(self):
+    self.assertEqual(drive_mode.read_drive_mode_param(self.RaisingParams()), drive_mode.DEFAULT_DRIVE_MODE)
+
+  def test_read_accepts_a_stringified_value(self):
+    self.assertEqual(drive_mode.read_drive_mode_param(self.StringParams()), drive_mode.SPORT)
+
+  def test_write_reports_failure_instead_of_raising(self):
+    params = self.RaisingParams()
+    self.assertFalse(drive_mode.write_drive_mode_param(params, drive_mode.SPORT))
+    self.assertEqual(params.put_calls, [(drive_mode.DRIVE_MODE_PARAM, drive_mode.SPORT)])
+
+
 if __name__ == "__main__":
   unittest.main()

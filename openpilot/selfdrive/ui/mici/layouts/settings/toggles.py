@@ -1,13 +1,40 @@
 from openpilot.cereal import log
 
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamControl, BigMultiParamToggle
+from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamControl, BigMultiParamToggle, BigMultiToggle
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import InitialCruiseSpeedButton
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+
+class _SafeMultiParamToggle(BigMultiParamToggle):
+  """BigMultiParamToggle that survives a param the compiled libparams does not know.
+
+  The device's prebuilt libparams_c.so can lag behind params_keys.h, so reading a key
+  that only exists in source raises UnknownKeyName. A settings row must never take the
+  whole UI down over a stale binary: show the first option and swallow the write.
+  """
+
+  def _load_value(self):
+    try:
+      raw = self._params.get(self._param)
+    except Exception:
+      raw = None
+    try:
+      index = int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+      index = 0
+    self.set_value(self._options[index] if 0 <= index < len(self._options) else self._options[0])
+
+  def _handle_mouse_release(self, mouse_pos):
+    BigMultiToggle._handle_mouse_release(self, mouse_pos)
+    try:
+      self._params.put(self._param, self._options.index(self.value))
+    except Exception:
+      pass
 
 
 class TogglesLayoutMici(NavScroller):
@@ -19,7 +46,7 @@ class TogglesLayoutMici(NavScroller):
                                                                "Aggressive follows closer, with firmer gas and braking.\n" +
                                                                "Relaxed leaves more space.\n" +
                                                                "Use the steering wheel distance button on supported cars.")
-    self._drive_mode_toggle = BigMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
+    self._drive_mode_toggle = _SafeMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
                                                   description="Eco accelerates gently and stays comfortable.\n" +
                                                               "Sport uses the car's full acceleration.\n" +
                                                               "Following distance is a separate setting above.")

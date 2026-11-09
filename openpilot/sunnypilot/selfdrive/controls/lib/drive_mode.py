@@ -90,10 +90,22 @@ def _check_personality(personality) -> None:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
+def personality_index(personality) -> int:
+  """Return the plain int the tables are keyed by.
+
+  Live cereal messages hand back capnp's _DynamicEnum, whose hash is object identity:
+  `==` against the int constants works, but a dict lookup by value raises KeyError.
+  Match by equality so both the int constants and live enum values are accepted.
+  """
+  for value in (RELAXED, STANDARD, AGGRESSIVE):
+    if personality == value:
+      return value
+  raise NotImplementedError("Longitudinal personality not supported")
+
+
 def get_t_follow(personality) -> float:
   """Following time for a driving personality. This is the gap axis."""
-  _check_personality(personality)
-  return max(PERSONALITY_T_FOLLOW[personality], MIN_T_FOLLOW)
+  return max(PERSONALITY_T_FOLLOW[personality_index(personality)], MIN_T_FOLLOW)
 
 
 def get_profile(drive_mode) -> DriveModeProfile:
@@ -111,6 +123,36 @@ def get_jerk_scale(drive_mode) -> float:
 
 def get_launch_boost(drive_mode) -> float:
   return get_profile(drive_mode).launch_boost
+
+
+def read_drive_mode_param(params) -> int:
+  """Read the DriveModeProfile param without ever raising.
+
+  The prebuilt libparams_c.so shipped on the device can lag behind params_keys.h, and the
+  Params backend then raises UnknownKeyName for a key that only exists in source. A
+  settings screen or a planner tick must never go down over that, so fall back to the
+  default drive mode instead of propagating.
+  """
+  try:
+    raw = params.get(DRIVE_MODE_PARAM)
+  except Exception:
+    return DEFAULT_DRIVE_MODE
+  if raw in (None, ""):
+    return DEFAULT_DRIVE_MODE
+  try:
+    value = int(raw)
+  except (TypeError, ValueError):
+    return DEFAULT_DRIVE_MODE
+  return value if value in DRIVE_MODES else DEFAULT_DRIVE_MODE
+
+
+def write_drive_mode_param(params, value) -> bool:
+  """Persist the selected drive mode. False when the param backend rejects the key."""
+  try:
+    params.put(DRIVE_MODE_PARAM, int(value), block=True)
+    return True
+  except Exception:
+    return False
 
 
 def is_launching(v_ego: float, v_lead: float, lead_present: bool) -> bool:
@@ -140,13 +182,7 @@ class DriveModeSelector:
     now = self._clock()
     if now - self._last_read >= self.REFRESH_SECONDS:
       self._last_read = now
-      try:
-        raw = self._params.get(DRIVE_MODE_PARAM)
-        self._drive_mode = int(raw) if raw not in (None, "") else DEFAULT_DRIVE_MODE
-      except Exception:
-        self._drive_mode = DEFAULT_DRIVE_MODE
-      if self._drive_mode not in DRIVE_MODES:
-        self._drive_mode = DEFAULT_DRIVE_MODE
+      self._drive_mode = read_drive_mode_param(self._params)
     return self._drive_mode
 
   @property

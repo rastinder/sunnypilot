@@ -7,6 +7,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.layouts.settings.initial_cruise_speed import InitialCruiseSpeedControl
+from openpilot.sunnypilot.selfdrive.controls.lib.drive_mode import read_drive_mode_param, write_drive_mode_param
 
 if gui_app.sunnypilot_ui():
   from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp as toggle_item
@@ -110,7 +111,7 @@ class TogglesLayout(Widget):
       buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
       button_width=300,
       callback=self._set_drive_mode,
-      selected_index=self._params.get("DriveModeProfile", return_default=True),
+      selected_index=read_drive_mode_param(self._params),
       icon="speed_limit.png"
     )
 
@@ -206,4 +207,4 @@ class TogglesLayout(Widget):
     self._params.put("LongitudinalPersonality", button_index, block=True)
 
   def _set_drive_mode(self, button_index: int):
-    self._params.put("DriveModeProfile", button_index, block=True)
+    write_drive_mode_param(self._params, button_index)

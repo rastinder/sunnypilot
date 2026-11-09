@@ -308,7 +308,7 @@ class LongitudinalMpc:
   def launch_accel_boost(self, radarstate, drive_mode_profile):
     """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
     lead = radarstate.leadOne
-    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
+    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.present):
       return drive_mode.get_launch_boost(drive_mode_profile)
     return 0.0
 
