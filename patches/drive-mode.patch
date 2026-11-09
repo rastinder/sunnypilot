@@ -1,42 +1,3 @@
-diff --git a/.github/workflows/upstream-sync.yml b/.github/workflows/upstream-sync.yml
-index e7840bf54e..f86670f913 100644
---- a/.github/workflows/upstream-sync.yml
-+++ b/.github/workflows/upstream-sync.yml
-@@ -98,6 +98,21 @@ jobs:
-             launch_path.write_text(launch)
-           PY
- 
-+            # Re-apply the local drive-mode tuning patch. This rewrite path replaces the
-+            # whole tree with upstream, which would otherwise drop the tuning on every
-+            # re-squash, so the patch lives on the separate `tuning` branch (the sync never
-+            # rewrites that branch). Failing here is deliberate: silently shipping a build
-+            # without the tuning would look like the feature simply stopped working.
-+            rm -f /tmp/drive-mode.patch
-+            if git fetch --depth=1 origin tuning && git show FETCH_HEAD:patches/drive-mode.patch > /tmp/drive-mode.patch; then
-+              git apply /tmp/drive-mode.patch \
-+                || { echo "::error::drive-mode patch does not apply to the new upstream tree; refresh patches/drive-mode.patch on the tuning branch"; exit 1; }
-+              echo "Re-applied drive-mode tuning patch."
-+            else
-+              echo "::error::cannot read patches/drive-mode.patch from origin/tuning"
-+              exit 1
-+            fi
-+
-             mkdir -p .github/workflows
-             cp "$WORKFLOW_BACKUP" .github/workflows/upstream-sync.yml
-             git add -A
-@@ -124,7 +139,11 @@ jobs:
-             || { echo "::error::SUNNYLINK bypass marker missing from policy.py after merge!"; exit 1; }
-           grep -q 'fix_pay_attention' launch_env.sh \
-             || { echo "::error::fix_pay_attention hook missing from launch_env.sh after merge!"; exit 1; }
--          echo "Custom distraction-disable mods verified intact."
-+          test -f openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py \
-+            || { echo "::error::drive_mode.py missing after merge!"; exit 1; }
-+          grep -q 'launch_accel_boost' openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py \
-+            || { echo "::error::drive-mode tuning missing from long_mpc.py after merge!"; exit 1; }
-+          echo "Custom distraction-disable and drive-mode mods verified intact."
- 
-       - name: Push to fork staging
-         if: steps.merge.outputs.result == 'merged'
 diff --git a/openpilot/common/params_keys.h b/openpilot/common/params_keys.h
 index 1ccd8110a6..2e9e5a15ed 100644
 --- a/openpilot/common/params_keys.h
@@ -52,7 +13,7 @@ index 1ccd8110a6..2e9e5a15ed 100644
      {"ObdMultiplexingChanged", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
      {"ObdMultiplexingEnabled", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
 diff --git a/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py b/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
-index 0a0722fbc6..20e9ed2210 100755
+index 0a0722fbc6..ae9eb30c11 100755
 --- a/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
 +++ b/openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py
 @@ -9,6 +9,7 @@ from openpilot.common.swaglog import cloudlog
@@ -126,7 +87,7 @@ index 0a0722fbc6..20e9ed2210 100755
 +  def launch_accel_boost(self, radarstate, drive_mode_profile):
 +    """Extra accel headroom while pulling away from a stop behind a lead that has moved."""
 +    lead = radarstate.leadOne
-+    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.status):
++    if drive_mode.is_launching(self.x0[1], lead.vLead, lead.present):
 +      return drive_mode.get_launch_boost(drive_mode_profile)
 +    return 0.0
 +
@@ -216,10 +177,18 @@ index 87f62fbe95..be18aecc4d 100755
  
      output_a_target_e2e = self.accel_boost.update(sm, output_a_target_e2e, output_a_target_mpc, self.a_cruise)
 diff --git a/openpilot/selfdrive/ui/layouts/settings/toggles.py b/openpilot/selfdrive/ui/layouts/settings/toggles.py
-index ccc496adb5..4a3f8fea25 100644
+index ccc496adb5..a8fcf0b73b 100644
 --- a/openpilot/selfdrive/ui/layouts/settings/toggles.py
 +++ b/openpilot/selfdrive/ui/layouts/settings/toggles.py
-@@ -23,6 +23,10 @@ DESCRIPTIONS = {
+@@ -7,6 +7,7 @@ from openpilot.system.ui.lib.application import gui_app
+ from openpilot.system.ui.lib.multilang import tr, tr_noop
+ from openpilot.selfdrive.ui.ui_state import ui_state
+ from openpilot.selfdrive.ui.layouts.settings.initial_cruise_speed import InitialCruiseSpeedControl
++from openpilot.sunnypilot.selfdrive.controls.lib.drive_mode import read_drive_mode_param, write_drive_mode_param
+ 
+ if gui_app.sunnypilot_ui():
+   from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp as toggle_item
+@@ -23,6 +24,10 @@ DESCRIPTIONS = {
      "Your attention is required at all times to use this feature."
    ),
    "DisengageOnAccelerator": tr_noop("When enabled, pressing the accelerator pedal will disengage sunnypilot."),
@@ -230,7 +199,7 @@ index ccc496adb5..4a3f8fea25 100644
    "LongitudinalPersonality": tr_noop(
      "Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. " +
      "In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
-@@ -100,6 +104,16 @@ class TogglesLayout(Widget):
+@@ -100,6 +105,16 @@ class TogglesLayout(Widget):
        icon="speed_limit.png"
      )
  
@@ -240,14 +209,14 @@ index ccc496adb5..4a3f8fea25 100644
 +      buttons=[lambda: tr("Eco"), lambda: tr("Normal"), lambda: tr("Sport")],
 +      button_width=300,
 +      callback=self._set_drive_mode,
-+      selected_index=self._params.get("DriveModeProfile", return_default=True),
++      selected_index=read_drive_mode_param(self._params),
 +      icon="speed_limit.png"
 +    )
 +
      self._toggles = {}
      self._initial_cruise_speed = ListItem(
        title=lambda: tr("Initial Max Speed"),
-@@ -140,6 +154,7 @@ class TogglesLayout(Widget):
+@@ -140,6 +155,7 @@ class TogglesLayout(Widget):
        # insert longitudinal personality after NDOG toggle
        if param == "DisengageOnAccelerator":
          self._toggles["LongitudinalPersonality"] = self._long_personality_setting
@@ -255,7 +224,7 @@ index ccc496adb5..4a3f8fea25 100644
          self._toggles["InitialCruiseSpeedKph"] = self._initial_cruise_speed
  
      self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
-@@ -164,6 +179,7 @@ class TogglesLayout(Widget):
+@@ -164,6 +180,7 @@ class TogglesLayout(Widget):
  
      if ui_state.CP is not None:
        self._long_personality_setting.action_item.set_enabled(ui_state.has_longitudinal_control)
@@ -263,29 +232,72 @@ index ccc496adb5..4a3f8fea25 100644
  
      # TODO: make a param control list item so we don't need to manage internal state as much here
      # refresh toggles from params to mirror external changes
-@@ -188,3 +204,6 @@ class TogglesLayout(Widget):
+@@ -188,3 +205,6 @@ class TogglesLayout(Widget):
  
    def _set_longitudinal_personality(self, button_index: int):
      self._params.put("LongitudinalPersonality", button_index, block=True)
 +
 +  def _set_drive_mode(self, button_index: int):
-+    self._params.put("DriveModeProfile", button_index, block=True)
++    write_drive_mode_param(self._params, button_index)
 diff --git a/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py b/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
-index 406e0a77d1..52ccaf58aa 100644
+index 406e0a77d1..b2b561e607 100644
 --- a/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
 +++ b/openpilot/selfdrive/ui/mici/layouts/settings/toggles.py
-@@ -19,6 +19,10 @@ class TogglesLayoutMici(NavScroller):
+@@ -1,7 +1,7 @@
+ from openpilot.cereal import log
+ 
+ from openpilot.system.ui.widgets.scroller import NavScroller
+-from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamControl, BigMultiParamToggle
++from openpilot.selfdrive.ui.mici.widgets.button import BigToggle, BigParamControl, BigMultiParamToggle, BigMultiToggle
+ from openpilot.system.ui.lib.application import gui_app
+ from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
+ from openpilot.selfdrive.ui.ui_state import ui_state
+@@ -10,6 +10,33 @@ from openpilot.selfdrive.ui.mici.layouts.settings.initial_cruise_speed import In
+ PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+ 
+ 
++class _SafeMultiParamToggle(BigMultiParamToggle):
++  """BigMultiParamToggle that survives a param the compiled libparams does not know.
++
++  The device's prebuilt libparams_c.so can lag behind params_keys.h, so reading a key
++  that only exists in source raises UnknownKeyName. A settings row must never take the
++  whole UI down over a stale binary: show the first option and swallow the write.
++  """
++
++  def _load_value(self):
++    try:
++      raw = self._params.get(self._param)
++    except Exception:
++      raw = None
++    try:
++      index = int(raw) if raw is not None else 0
++    except (TypeError, ValueError):
++      index = 0
++    self.set_value(self._options[index] if 0 <= index < len(self._options) else self._options[0])
++
++  def _handle_mouse_release(self, mouse_pos):
++    BigMultiToggle._handle_mouse_release(self, mouse_pos)
++    try:
++      self._params.put(self._param, self._options.index(self.value))
++    except Exception:
++      pass
++
++
+ class TogglesLayoutMici(NavScroller):
+   def __init__(self):
+     super().__init__()
+@@ -19,6 +46,10 @@ class TogglesLayoutMici(NavScroller):
                                                                 "Aggressive follows closer, with firmer gas and braking.\n" +
                                                                 "Relaxed leaves more space.\n" +
                                                                 "Use the steering wheel distance button on supported cars.")
-+    self._drive_mode_toggle = BigMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
++    self._drive_mode_toggle = _SafeMultiParamToggle("drive mode", "DriveModeProfile", ["eco", "normal", "sport"],
 +                                                  description="Eco accelerates gently and stays comfortable.\n" +
 +                                                              "Sport uses the car's full acceleration.\n" +
 +                                                              "Following distance is a separate setting above.")
      self._initial_cruise_speed = InitialCruiseSpeedButton()
      self._initial_cruise_speed.set_visible(lambda: ui_state.CP is not None and ui_state.has_longitudinal_control and not ui_state.CP.pcmCruise)
      is_metric_toggle = BigToggle("use metric units", initial_state=ui_state.params.get_bool("IsMetric"), toggle_callback=self._on_metric_toggle)
-@@ -40,6 +44,7 @@ class TogglesLayoutMici(NavScroller):
+@@ -40,6 +71,7 @@ class TogglesLayoutMici(NavScroller):
  
      self._scroller.add_widgets([
        self._personality_toggle,
@@ -293,7 +305,7 @@ index 406e0a77d1..52ccaf58aa 100644
        self._initial_cruise_speed,
        is_metric_toggle,
        ldw_toggle,
-@@ -92,6 +97,7 @@ class TogglesLayoutMici(NavScroller):
+@@ -92,6 +124,7 @@ class TogglesLayoutMici(NavScroller):
  
      if ui_state.CP is not None:
        self._personality_toggle.set_visible(ui_state.has_longitudinal_control)
@@ -303,10 +315,10 @@ index 406e0a77d1..52ccaf58aa 100644
      for key, item in self._refresh_toggles:
 diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
 new file mode 100644
-index 0000000000..d5585cf99b
+index 0000000000..edbe78d40a
 --- /dev/null
 +++ b/openpilot/sunnypilot/selfdrive/controls/lib/drive_mode.py
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,190 @@
 +"""
 +Two independent longitudinal axes for sunnypilot.
 +
@@ -399,10 +411,22 @@ index 0000000000..d5585cf99b
 +    raise NotImplementedError("Longitudinal personality not supported")
 +
 +
++def personality_index(personality) -> int:
++  """Return the plain int the tables are keyed by.
++
++  Live cereal messages hand back capnp's _DynamicEnum, whose hash is object identity:
++  `==` against the int constants works, but a dict lookup by value raises KeyError.
++  Match by equality so both the int constants and live enum values are accepted.
++  """
++  for value in (RELAXED, STANDARD, AGGRESSIVE):
++    if personality == value:
++      return value
++  raise NotImplementedError("Longitudinal personality not supported")
++
++
 +def get_t_follow(personality) -> float:
 +  """Following time for a driving personality. This is the gap axis."""
-+  _check_personality(personality)
-+  return max(PERSONALITY_T_FOLLOW[personality], MIN_T_FOLLOW)
++  return max(PERSONALITY_T_FOLLOW[personality_index(personality)], MIN_T_FOLLOW)
 +
 +
 +def get_profile(drive_mode) -> DriveModeProfile:
@@ -420,6 +444,36 @@ index 0000000000..d5585cf99b
 +
 +def get_launch_boost(drive_mode) -> float:
 +  return get_profile(drive_mode).launch_boost
++
++
++def read_drive_mode_param(params) -> int:
++  """Read the DriveModeProfile param without ever raising.
++
++  The prebuilt libparams_c.so shipped on the device can lag behind params_keys.h, and the
++  Params backend then raises UnknownKeyName for a key that only exists in source. A
++  settings screen or a planner tick must never go down over that, so fall back to the
++  default drive mode instead of propagating.
++  """
++  try:
++    raw = params.get(DRIVE_MODE_PARAM)
++  except Exception:
++    return DEFAULT_DRIVE_MODE
++  if raw in (None, ""):
++    return DEFAULT_DRIVE_MODE
++  try:
++    value = int(raw)
++  except (TypeError, ValueError):
++    return DEFAULT_DRIVE_MODE
++  return value if value in DRIVE_MODES else DEFAULT_DRIVE_MODE
++
++
++def write_drive_mode_param(params, value) -> bool:
++  """Persist the selected drive mode. False when the param backend rejects the key."""
++  try:
++    params.put(DRIVE_MODE_PARAM, int(value), block=True)
++    return True
++  except Exception:
++    return False
 +
 +
 +def is_launching(v_ego: float, v_lead: float, lead_present: bool) -> bool:
@@ -449,13 +503,7 @@ index 0000000000..d5585cf99b
 +    now = self._clock()
 +    if now - self._last_read >= self.REFRESH_SECONDS:
 +      self._last_read = now
-+      try:
-+        raw = self._params.get(DRIVE_MODE_PARAM)
-+        self._drive_mode = int(raw) if raw not in (None, "") else DEFAULT_DRIVE_MODE
-+      except Exception:
-+        self._drive_mode = DEFAULT_DRIVE_MODE
-+      if self._drive_mode not in DRIVE_MODES:
-+        self._drive_mode = DEFAULT_DRIVE_MODE
++      self._drive_mode = read_drive_mode_param(self._params)
 +    return self._drive_mode
 +
 +  @property
@@ -463,10 +511,10 @@ index 0000000000..d5585cf99b
 +    return get_profile(self._drive_mode)
 diff --git a/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py b/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
 new file mode 100644
-index 0000000000..207f6ee829
+index 0000000000..44fac72fd6
 --- /dev/null
 +++ b/openpilot/sunnypilot/selfdrive/controls/lib/tests/test_drive_mode.py
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,171 @@
 +import itertools
 +import unittest
 +
@@ -604,6 +652,36 @@ index 0000000000..207f6ee829
 +
 +  def test_lead_creeping_below_threshold_is_not_launching(self):
 +    self.assertFalse(drive_mode.is_launching(v_ego=0.0, v_lead=0.2, lead_present=True))
++
++
++class TestStaleBinaryTolerance(unittest.TestCase):
++  """The device's prebuilt libparams_c.so can lag params_keys.h and raise UnknownKeyName."""
++
++  class RaisingParams:
++    def __init__(self):
++      self.put_calls = []
++
++    def get(self, key, *args, **kwargs):
++      raise KeyError("UnknownKeyName")
++
++    def put(self, key, value, *args, **kwargs):
++      self.put_calls.append((key, value))
++      raise KeyError("UnknownKeyName")
++
++  class StringParams:
++    def get(self, key, *args, **kwargs):
++      return "2"
++
++  def test_read_falls_back_to_default_when_backend_raises(self):
++    self.assertEqual(drive_mode.read_drive_mode_param(self.RaisingParams()), drive_mode.DEFAULT_DRIVE_MODE)
++
++  def test_read_accepts_a_stringified_value(self):
++    self.assertEqual(drive_mode.read_drive_mode_param(self.StringParams()), drive_mode.SPORT)
++
++  def test_write_reports_failure_instead_of_raising(self):
++    params = self.RaisingParams()
++    self.assertFalse(drive_mode.write_drive_mode_param(params, drive_mode.SPORT))
++    self.assertEqual(params.put_calls, [(drive_mode.DRIVE_MODE_PARAM, drive_mode.SPORT)])
 +
 +
 +if __name__ == "__main__":
